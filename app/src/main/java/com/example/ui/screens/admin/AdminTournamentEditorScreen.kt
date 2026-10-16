@@ -1,0 +1,326 @@
+package com.example.ui.screens.admin
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.firestore.TournamentDto
+import com.example.ui.theme.FireOrange
+import com.example.ui.theme.HighContrastDark
+import com.example.ui.theme.SlateLightBg
+import com.example.ui.theme.SlateMutedBorder
+import com.example.ui.theme.TextPrimaryDark
+import com.example.ui.theme.TextSecondaryMuted
+import com.example.viewmodel.AppViewModel
+import java.util.UUID
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AdminTournamentEditorScreen(viewModel: AppViewModel) {
+    val existingTournament by viewModel.selectedTournament.collectAsStateWithLifecycle()
+    val isNew = existingTournament == null
+
+    var title by remember(existingTournament) { mutableStateOf(existingTournament?.title ?: "") }
+    var matchType by remember(existingTournament) { mutableStateOf(existingTournament?.matchType ?: "SOLO") }
+    var mapName by remember(existingTournament) { mutableStateOf(existingTournament?.map ?: "Bermuda") }
+    var entryFee by remember(existingTournament) { mutableStateOf(existingTournament?.entryFee?.toString() ?: "50") }
+    var prizePool by remember(existingTournament) { mutableStateOf(existingTournament?.prizePool?.toString() ?: "1800") }
+    var perKill by remember(existingTournament) { mutableStateOf(existingTournament?.perKillReward?.toString() ?: "15") }
+    var maxSlots by remember(existingTournament) { mutableStateOf(existingTournament?.maxSlots?.toString() ?: "48") }
+    var scheduleTime by remember(existingTournament) { mutableStateOf(existingTournament?.scheduleTime ?: "Today, 09:00 PM") }
+    var status by remember(existingTournament) { mutableStateOf(existingTournament?.status ?: "UPCOMING") }
+    var firstPrize by remember(existingTournament) { mutableStateOf(existingTournament?.firstPrize?.toString() ?: "800") }
+    var secondPrize by remember(existingTournament) { mutableStateOf(existingTournament?.secondPrize?.toString() ?: "400") }
+    var thirdPrize by remember(existingTournament) { mutableStateOf(existingTournament?.thirdPrize?.toString() ?: "200") }
+    var rules by remember(existingTournament) {
+        mutableStateOf(
+            existingTournament?.rules ?: "1. Emulators strictly forbidden.\n2. Arrive in room 10 minutes prior.\n3. Fair play only."
+        )
+    }
+
+    val mapOptions = listOf("Bermuda", "Purgatory", "Kalahari", "Alpine")
+    val modeOptions = listOf("SOLO", "DUO", "SQUAD")
+    val statusOptions = listOf("UPCOMING", "LIVE", "COMPLETED", "CANCELLED")
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = if (isNew) "Create Tournament" else "Edit Tournament",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimaryDark
+                    )
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = { viewModel.navigateBack() },
+                        modifier = Modifier.testTag("admin_editor_back_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimaryDark
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SlateLightBg)
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, SlateMutedBorder)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Basic Tournament Info", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("Match Title (e.g. Bermuda Solo Championship #105)") },
+                        modifier = Modifier.fillMaxWidth().testTag("editor_title_input")
+                    )
+
+                    // Match Mode Selector
+                    Text("Match Format:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        modeOptions.forEach { mode ->
+                            FilterChip(
+                                selected = matchType == mode,
+                                onClick = {
+                                    matchType = mode
+                                    if (mode == "SOLO") maxSlots = "48"
+                                    else if (mode == "DUO") maxSlots = "24"
+                                    else if (mode == "SQUAD") maxSlots = "12"
+                                },
+                                label = { Text(mode) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = HighContrastDark,
+                                    selectedLabelColor = Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    // Map Selector
+                    Text("Map:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        mapOptions.forEach { m ->
+                            FilterChip(
+                                selected = mapName == m,
+                                onClick = { mapName = m },
+                                label = { Text(m, fontSize = 11.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = FireOrange,
+                                    selectedLabelColor = Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = scheduleTime,
+                        onValueChange = { scheduleTime = it },
+                        label = { Text("Schedule Time (e.g. Today, 09:30 PM)") },
+                        modifier = Modifier.fillMaxWidth().testTag("editor_time_input")
+                    )
+
+                    // Status
+                    Text("Match Status:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        statusOptions.forEach { s ->
+                            FilterChip(
+                                selected = status == s,
+                                onClick = { status = s },
+                                label = { Text(s, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Financial & Slots Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, SlateMutedBorder)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Economics & Capacity", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = entryFee,
+                            onValueChange = { entryFee = it.filter { c -> c.isDigit() } },
+                            label = { Text("Entry Fee (₹)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f).testTag("editor_entry_fee")
+                        )
+                        OutlinedTextField(
+                            value = maxSlots,
+                            onValueChange = { maxSlots = it.filter { c -> c.isDigit() } },
+                            label = { Text("Max Slots") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f).testTag("editor_max_slots")
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = prizePool,
+                            onValueChange = { prizePool = it.filter { c -> c.isDigit() } },
+                            label = { Text("Total Prize Pool (₹)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f).testTag("editor_prize_pool")
+                        )
+                        OutlinedTextField(
+                            value = perKill,
+                            onValueChange = { perKill = it.filter { c -> c.isDigit() } },
+                            label = { Text("Per Kill (₹)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f).testTag("editor_per_kill")
+                        )
+                    }
+
+                    Text("Prize Breakdown:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = firstPrize,
+                            onValueChange = { firstPrize = it.filter { c -> c.isDigit() } },
+                            label = { Text("1st Rank") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = secondPrize,
+                            onValueChange = { secondPrize = it.filter { c -> c.isDigit() } },
+                            label = { Text("2nd Rank") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = thirdPrize,
+                            onValueChange = { thirdPrize = it.filter { c -> c.isDigit() } },
+                            label = { Text("3rd Rank") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = rules,
+                        onValueChange = { rules = it },
+                        label = { Text("Rules & Guidelines") },
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth().testTag("editor_rules")
+                    )
+                }
+            }
+
+            // Save CTA
+            Button(
+                onClick = {
+                    if (title.isBlank()) {
+                        viewModel.showToast("Please enter a tournament title")
+                        return@Button
+                    }
+                    val newEntity = TournamentDto(
+                        id = existingTournament?.id ?: ("FF-T" + (100..999).random()),
+                        title = title.trim(),
+                        matchType = matchType,
+                        map = mapName,
+                        entryFee = entryFee.toIntOrNull() ?: 0,
+                        prizePool = prizePool.toIntOrNull() ?: 1000,
+                        perKillReward = perKill.toIntOrNull() ?: 10,
+                        maxSlots = maxSlots.toIntOrNull() ?: 48,
+                        joinedSlots = existingTournament?.joinedSlots ?: 0,
+                        scheduleTime = scheduleTime.ifBlank { "Today, 09:00 PM" },
+                        timestamp = existingTournament?.timestamp ?: (System.currentTimeMillis() + 3600000),
+                        status = status,
+                        roomId = existingTournament?.roomId,
+                        roomPassword = existingTournament?.roomPassword,
+                        roomNotice = existingTournament?.roomNotice,
+                        firstPrize = firstPrize.toIntOrNull() ?: 0,
+                        secondPrize = secondPrize.toIntOrNull() ?: 0,
+                        thirdPrize = thirdPrize.toIntOrNull() ?: 0,
+                        rules = rules
+                    )
+                    if (isNew) {
+                        viewModel.createTournament(newEntity)
+                    } else {
+                        viewModel.updateTournament(newEntity)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .testTag("save_tournament_button")
+            ) {
+                Text(
+                    text = if (isNew) "Publish New Tournament" else "Save Changes",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(30.dp))
+        }
+    }
+}

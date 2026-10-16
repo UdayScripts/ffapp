@@ -1,0 +1,156 @@
+{
+  "entities": {
+    "Tournament": {
+      "title": "Tournament",
+      "description": "Free Fire tournament match configuration and state",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "matchType": { "type": "string" },
+        "map": { "type": "string" },
+        "entryFee": { "type": "number" },
+        "prizePool": { "type": "number" },
+        "perKill": { "type": "number" },
+        "scheduleTime": { "type": "string" },
+        "maxSlots": { "type": "number" },
+        "joinedSlots": { "type": "number" },
+        "roomId": { "type": "string" },
+        "roomPassword": { "type": "string" },
+        "status": { "type": "string" },
+        "winnerTeam": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "matchType", "map", "entryFee", "prizePool", "maxSlots", "status"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with Free Fire IGN, wallet balance, and tournament stats",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "username": { "type": "string" },
+        "inGameName": { "type": "string" },
+        "inGameId": { "type": "string" },
+        "balance": { "type": "number" },
+        "matchesPlayed": { "type": "number" },
+        "matchesWon": { "type": "number" },
+        "totalKills": { "type": "number" },
+        "totalEarnings": { "type": "number" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "username", "balance", "role"]
+    },
+    "Participant": {
+      "title": "Participant",
+      "description": "User registration and match performance result for a tournament",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tournamentId": { "type": "string" },
+        "userId": { "type": "string" },
+        "inGameName": { "type": "string" },
+        "inGameId": { "type": "string" },
+        "slotNumber": { "type": "number" },
+        "kills": { "type": "number" },
+        "rank": { "type": "number" },
+        "prizeWon": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "tournamentId", "userId", "inGameName", "inGameId", "slotNumber"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Deposit, entry fee deduction, prize win, and refund balance transaction logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "title": { "type": "string" },
+        "status": { "type": "string" },
+        "referenceId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "type", "amount", "title", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Real-time match alerts, room credentials release, and announcements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "targetUserId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "referenceId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "targetUserId", "title", "message", "type"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global application configuration and rules",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "appName": { "type": "string" },
+        "announcementText": { "type": "string" },
+        "isMaintenance": { "type": "boolean" },
+        "supportContact": { "type": "string" },
+        "minDeposit": { "type": "number" },
+        "platformFeePercent": { "type": "number" },
+        "rulesAndGuidelines": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "appName"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "System administrator identity",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email"]
+    }
+  },
+  "firestore": {
+    "/tournaments/{tournamentId}": {
+      "schema": "Tournament",
+      "description": "Tournaments available for registration and play"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and wallet balances"
+    },
+    "/participants/{participantId}": {
+      "schema": "Participant",
+      "description": "Tournament slot bookings and match results"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "User wallet deposit and match balance logs"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Real-time match alerts and announcements"
+    },
+    "/app_settings/{settingId}": {
+      "schema": "AppSettings",
+      "description": "Global application settings"
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Whitelisted administrator accounts"
+    }
+  }
+}

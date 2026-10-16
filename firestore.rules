@@ -1,0 +1,193 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        ('email' in request.auth.token && request.auth.token.email == 'udaynath381@gmail.com') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidTournament(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 64)) &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 100)) &&
+             (!('matchType' in data) || data.matchType is string) &&
+             (!('map' in data) || (data.map is string && data.map.size() <= 50)) &&
+             (!('entryFee' in data) || (data.entryFee is number && data.entryFee >= 0)) &&
+             (!('prizePool' in data) || (data.prizePool is number && data.prizePool >= 0)) &&
+             (!('maxSlots' in data) || (data.maxSlots is number && data.maxSlots > 0)) &&
+             (!('joinedSlots' in data) || (data.joinedSlots is number && data.joinedSlots >= 0)) &&
+             (!('perKillReward' in data) || data.perKillReward is number) &&
+             (!('perKill' in data) || data.perKill is number) &&
+             (!('roomId' in data) || data.roomId == null || (data.roomId is string && data.roomId.size() <= 50)) &&
+             (!('roomPassword' in data) || data.roomPassword == null || (data.roomPassword is string && data.roomPassword.size() <= 50)) &&
+             (!('roomNotice' in data) || data.roomNotice == null || (data.roomNotice is string && data.roomNotice.size() <= 200)) &&
+             (!('scheduleTime' in data) || (data.scheduleTime is string && data.scheduleTime.size() <= 50)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 30)) &&
+             (!('firstPrize' in data) || data.firstPrize is number) &&
+             (!('secondPrize' in data) || data.secondPrize is number) &&
+             (!('thirdPrize' in data) || data.thirdPrize is number) &&
+             (!('rules' in data) || (data.rules is string && data.rules.size() <= 2000)) &&
+             (!('creatorId' in data) || (data.creatorId is string && data.creatorId.size() <= 128)) &&
+             (!('timestamp' in data) || data.timestamp is number || data.timestamp is timestamp) &&
+             (!('createdAt' in data) || data.createdAt == null || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt == null || data.updatedAt is timestamp);
+    }
+
+    function isValidUserProfile(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('username' in data) || (data.username is string && data.username.size() <= 100)) &&
+             (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 100)) &&
+             (!('ffIgn' in data) || (data.ffIgn is string && data.ffIgn.size() <= 50)) &&
+             (!('ffUid' in data) || (data.ffUid is string && data.ffUid.size() <= 50)) &&
+             (!('inGameName' in data) || (data.inGameName is string && data.inGameName.size() <= 50)) &&
+             (!('inGameId' in data) || (data.inGameId is string && data.inGameId.size() <= 50)) &&
+             (!('walletBalance' in data) || data.walletBalance is number) &&
+             (!('balance' in data) || data.balance is number) &&
+             (!('isAdmin' in data) || data.isAdmin is bool) &&
+             (!('isSuspended' in data) || data.isSuspended is bool) &&
+             (!('matchesPlayed' in data) || data.matchesPlayed is number) &&
+             (!('totalKills' in data) || data.totalKills is number) &&
+             (!('totalWinnings' in data) || data.totalWinnings is number) &&
+             (!('createdAt' in data) || data.createdAt == null || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt == null || data.updatedAt is timestamp);
+    }
+
+    function isValidParticipant(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('tournamentId' in data) || (data.tournamentId is string && data.tournamentId.size() <= 64)) &&
+             (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
+             (!('playerName' in data) || (data.playerName is string && data.playerName.size() <= 50)) &&
+             (!('ffIgn' in data) || (data.ffIgn is string && data.ffIgn.size() <= 50)) &&
+             (!('ffUid' in data) || (data.ffUid is string && data.ffUid.size() <= 50)) &&
+             (!('slotNumber' in data) || data.slotNumber is number) &&
+             (!('kills' in data) || data.kills is number) &&
+             (!('placement' in data) || data.placement is number) &&
+             (!('prizeWon' in data) || data.prizeWon is number) &&
+             (!('joinedAt' in data) || data.joinedAt is number || data.joinedAt is timestamp);
+    }
+
+    function isValidTransaction(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
+             (!('type' in data) || (data.type is string && data.type.size() <= 30)) &&
+             (!('amount' in data) || data.amount is number) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 200)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 30)) &&
+             (!('referenceId' in data) || (data.referenceId is string && data.referenceId.size() <= 100)) &&
+             (!('timestamp' in data) || data.timestamp is number || data.timestamp is timestamp) &&
+             (!('balanceAfter' in data) || data.balanceAfter is number);
+    }
+
+    function isValidNotification(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 100)) &&
+             (!('message' in data) || (data.message is string && data.message.size() <= 500)) &&
+             (!('type' in data) || (data.type is string && data.type.size() <= 50)) &&
+             (!('tournamentId' in data) || data.tournamentId == null || (data.tournamentId is string && data.tournamentId.size() <= 64)) &&
+             (!('roomId' in data) || data.roomId == null || (data.roomId is string && data.roomId.size() <= 50)) &&
+             (!('roomPassword' in data) || data.roomPassword == null || (data.roomPassword is string && data.roomPassword.size() <= 50)) &&
+             (!('userId' in data) || data.userId == null || (data.userId is string && data.userId.size() <= 128)) &&
+             (!('timestamp' in data) || data.timestamp is number || data.timestamp is timestamp) &&
+             (!('isRead' in data) || data.isRead is bool);
+    }
+
+    function isValidAppSettings(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 50)) &&
+             (!('appName' in data) || (data.appName is string && data.appName.size() <= 50)) &&
+             (!('announcementText' in data) || (data.announcementText is string && data.announcementText.size() <= 500)) &&
+             (!('isMaintenance' in data) || data.isMaintenance is bool) &&
+             (!('supportContact' in data) || (data.supportContact is string && data.supportContact.size() <= 100)) &&
+             (!('minDeposit' in data) || data.minDeposit is number) &&
+             (!('platformFeePercent' in data) || data.platformFeePercent is number) &&
+             (!('rulesAndGuidelines' in data) || (data.rulesAndGuidelines is string && data.rulesAndGuidelines.size() <= 2000));
+    }
+
+    match /tournaments/{tournamentId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && isValidTournament(incoming());
+      allow update: if (isAdmin() && isValidTournament(incoming())) ||
+                       (isSignedIn() && isValidTournament(incoming()) &&
+                        (incoming().diff(existing()).affectedKeys().hasOnly(['joinedSlots', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['roomId', 'roomPassword', 'roomNotice', 'updatedAt'])));
+      allow delete: if isAdmin();
+
+      match /participants/{participantId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() && isValidParticipant(incoming());
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidUserProfile(incoming());
+      allow update: if isSignedIn() && ((request.auth.uid == userId && isValidUserProfile(incoming())) || (isAdmin() && isValidUserProfile(incoming())));
+      allow delete: if isAdmin();
+
+      match /transactions/{transactionId} {
+        allow get, list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidTransaction(incoming());
+        allow update, delete: if isAdmin();
+      }
+
+      match /participations/{participantId} {
+        allow get, list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidParticipant(incoming());
+        allow update, delete: if isAdmin() || isSignedIn();
+      }
+    }
+
+    match /participants/{participantId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidParticipant(incoming());
+      allow update, delete: if isAdmin() || isSignedIn();
+    }
+
+    match /transactions/{transactionId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidTransaction(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if (isAdmin() || isSignedIn()) && isValidNotification(incoming());
+    }
+
+    match /app_settings/{settingId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if (isAdmin() || isSignedIn()) && isValidAppSettings(incoming());
+      allow delete: if isAdmin() || isSignedIn();
+    }
+
+    match /admins/{adminId} {
+      allow get, list: if isAdmin();
+      allow write: if false;
+    }
+  }
+}
