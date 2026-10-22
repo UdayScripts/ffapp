@@ -3,6 +3,7 @@ package com.example.ui.screens.player
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,12 +14,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.SportsEsports
@@ -46,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,8 +61,10 @@ import com.example.ui.components.StatusBadge
 import com.example.ui.theme.FireOrange
 import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastDark
+import com.example.ui.theme.SlateCardBg
 import com.example.ui.theme.SlateLightBg
 import com.example.ui.theme.SlateMutedBorder
+import com.example.ui.theme.SlateSubtle
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimaryDark
 import com.example.ui.theme.TextSecondaryMuted
@@ -80,16 +86,17 @@ fun HistoryScreen(viewModel: AppViewModel) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Match & Balance History",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimaryDark
-                    )
-                },
-                navigationIcon = {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = SlateCardBg
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     IconButton(
                         onClick = { viewModel.navigateBack() },
                         modifier = Modifier.testTag("history_back_button")
@@ -100,9 +107,17 @@ fun HistoryScreen(viewModel: AppViewModel) {
                             tint = TextPrimaryDark
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
-            )
+                    Text(
+                        text = "Match & Balance History",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimaryDark,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -113,7 +128,7 @@ fun HistoryScreen(viewModel: AppViewModel) {
         ) {
             TabRow(
                 selectedTabIndex = selectedTabIndex,
-                containerColor = Color.White,
+                containerColor = SlateCardBg,
                 contentColor = FireOrange,
                 indicator = { tabPositions ->
                     TabRowDefaults.SecondaryIndicator(
@@ -131,8 +146,10 @@ fun HistoryScreen(viewModel: AppViewModel) {
                             Text(
                                 text = title,
                                 fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 13.sp,
-                                color = if (selectedTabIndex == index) FireOrange else TextSecondaryMuted
+                                fontSize = 12.sp,
+                                color = if (selectedTabIndex == index) FireOrange else TextSecondaryMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     )
@@ -155,11 +172,20 @@ fun HistoryScreen(viewModel: AppViewModel) {
                         } else {
                             items(userParticipations) { participation ->
                                 val tournament = allTournaments.find { it.id == participation.tournamentId }
-                                MyMatchCard(participation, tournament) {
-                                    if (tournament != null) {
-                                        viewModel.selectTournament(tournament.id)
+                                MyMatchCard(
+                                    participation = participation,
+                                    tournament = tournament,
+                                    onOpenLobby = {
+                                        if (tournament != null) {
+                                            viewModel.openTournamentLobby(tournament.id)
+                                        }
+                                    },
+                                    onClick = {
+                                        if (tournament != null) {
+                                            viewModel.selectTournament(tournament.id)
+                                        }
                                     }
-                                }
+                                )
                             }
                         }
                     }
@@ -204,6 +230,7 @@ fun HistoryScreen(viewModel: AppViewModel) {
 fun MyMatchCard(
     participation: ParticipantDto,
     tournament: TournamentDto?,
+    onOpenLobby: () -> Unit,
     onClick: () -> Unit
 ) {
     Card(
@@ -212,7 +239,7 @@ fun MyMatchCard(
             .clickable { onClick() }
             .testTag("my_match_card_${participation.tournamentId}"),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = SlateCardBg),
         border = BorderStroke(1.dp, SlateMutedBorder)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -221,7 +248,10 @@ fun MyMatchCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Surface(
                         color = HighContrastDark,
                         shape = RoundedCornerShape(6.dp)
@@ -231,6 +261,8 @@ fun MyMatchCard(
                             color = Color.White,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -239,10 +271,13 @@ fun MyMatchCard(
                         text = tournament?.matchType ?: "BATTLE ROYALE",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = FireOrangeDark
+                        color = FireOrangeDark,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
+                Spacer(modifier = Modifier.width(6.dp))
                 StatusBadge(tournament?.status ?: "UPCOMING")
             }
 
@@ -252,13 +287,17 @@ fun MyMatchCard(
                 text = tournament?.title ?: "Tournament #${participation.tournamentId}",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextPrimaryDark
+                color = TextPrimaryDark,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
             Text(
                 text = "Player: ${participation.ffIgn} (UID: ${participation.ffUid})",
                 fontSize = 11.sp,
-                color = TextSecondaryMuted
+                color = TextSecondaryMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -266,36 +305,99 @@ fun MyMatchCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                    .background(SlateSubtle, RoundedCornerShape(8.dp))
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PLACEMENT", fontSize = 9.sp, color = TextSecondaryMuted, fontWeight = FontWeight.Bold)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("PLACEMENT", fontSize = 9.sp, color = TextSecondaryMuted, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(
                         text = if (participation.placement > 0) "#${participation.placement}" else "Pending",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (participation.placement == 1) TrophyGold else TextPrimaryDark
+                        color = if (participation.placement == 1) TrophyGold else TextPrimaryDark,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("KILLS", fontSize = 9.sp, color = TextSecondaryMuted, fontWeight = FontWeight.Bold)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("KILLS", fontSize = 9.sp, color = TextSecondaryMuted, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(
                         text = "${participation.kills}",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = FireOrangeDark
+                        color = FireOrangeDark,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PRIZE WON", fontSize = 9.sp, color = TextSecondaryMuted, fontWeight = FontWeight.Bold)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("PRIZE WON", fontSize = 9.sp, color = TextSecondaryMuted, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(
                         text = "₹${participation.prizeWon}",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (participation.prizeWon > 0) SuccessGreen else TextSecondaryMuted
+                        color = if (participation.prizeWon > 0) SuccessGreen else TextSecondaryMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                }
+            }
+
+            if (tournament != null && (tournament.status == "UPCOMING" || tournament.status == "LIVE")) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onOpenLobby() }
+                        .testTag("history_open_lobby_${participation.tournamentId}"),
+                    color = HighContrastDark
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SportsEsports,
+                                contentDescription = null,
+                                tint = FireOrange,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (tournament.roomId.isNullOrBlank()) "Open Lobby (Keys Pending)" else "Open Lobby (Room Keys Live!) 🔓",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = FireOrange,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
         }
@@ -313,7 +415,7 @@ fun CompletedMatchCard(
             .clickable { onClick() }
             .testTag("completed_match_card_${match.id}"),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = SlateCardBg),
         border = BorderStroke(1.dp, SlateMutedBorder)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -322,16 +424,22 @@ fun CompletedMatchCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     MatchTypeBadge(match.matchType)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = match.map,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF475569)
+                        color = TextSecondaryMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+                Spacer(modifier = Modifier.width(6.dp))
                 StatusBadge(match.status)
             }
 
@@ -341,7 +449,9 @@ fun CompletedMatchCard(
                 text = match.title,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextPrimaryDark
+                color = TextPrimaryDark,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -349,21 +459,28 @@ fun CompletedMatchCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                    .background(SlateSubtle, RoundedCornerShape(8.dp))
                     .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "🏆 Prize Disbursed: ₹${match.prizePool}",
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TrophyGold
+                    color = TrophyGold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Tap for Scoreboard →",
+                    text = "Scoreboard →",
                     fontSize = 11.sp,
                     color = FireOrangeDark,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }

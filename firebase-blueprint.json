@@ -121,6 +121,67 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "email"]
+    },
+    "WithdrawalRequest": {
+      "title": "WithdrawalRequest",
+      "description": "Player UPI winning withdrawal request and status tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userFfIgn": { "type": "string" },
+        "userFfUid": { "type": "string" },
+        "amount": { "type": "number" },
+        "upiId": { "type": "string" },
+        "accountHolderName": { "type": "string" },
+        "status": { "type": "string" },
+        "adminNote": { "type": "string" },
+        "adminRefId": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "processedAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "amount", "upiId", "status"]
+    },
+    "SupportThread": {
+      "title": "SupportThread",
+      "description": "User support chat thread metadata for real-time user and admin support inbox",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userFfIgn": { "type": "string" },
+        "userFfUid": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "lastSenderId": { "type": "string" },
+        "lastSenderIsAdmin": { "type": "boolean" },
+        "lastMessageTimestamp": { "type": "number" },
+        "unreadByAdmin": { "type": "number" },
+        "unreadByUser": { "type": "number" },
+        "status": { "type": "string" },
+        "hasImage": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "lastMessage", "lastSenderId", "lastMessageTimestamp", "status"]
+    },
+    "SupportMessage": {
+      "title": "SupportMessage",
+      "description": "Individual text or photo message inside a user's support chat thread",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "threadUserId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "isAdminSender": { "type": "boolean" },
+        "messageText": { "type": "string" },
+        "imageBase64": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "threadUserId", "senderId", "senderName", "isAdminSender", "messageText", "timestamp"]
     }
   },
   "firestore": {
@@ -147,6 +208,18 @@
     "/app_settings/{settingId}": {
       "schema": "AppSettings",
       "description": "Global application settings"
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": "WithdrawalRequest",
+      "description": "Player UPI winning withdrawal requests"
+    },
+    "/support_chats/{userId}": {
+      "schema": "SupportThread",
+      "description": "Support chat conversation thread metadata per user"
+    },
+    "/support_chats/{userId}/messages/{messageId}": {
+      "schema": "SupportMessage",
+      "description": "Support chat text and photo messages for a user thread"
     },
     "/admins/{adminId}": {
       "schema": "Admin",

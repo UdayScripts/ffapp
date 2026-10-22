@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
@@ -48,6 +50,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.FireOrange
@@ -57,7 +60,10 @@ import com.example.ui.theme.HighContrastDark
 import com.example.ui.theme.HighContrastSurface
 import com.example.ui.theme.LiveRed
 import com.example.ui.theme.SlateMutedBorder
+import com.example.ui.theme.SlateSubtle
 import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.TextPrimaryDark
+import com.example.ui.theme.TextSecondaryMuted
 import com.example.ui.theme.TrophyGold
 import com.example.viewmodel.UiNotificationAlert
 
@@ -109,8 +115,11 @@ fun StatusBadge(status: String) {
         Text(
             text = label,
             color = textColor,
-            fontSize = 11.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
     }
@@ -143,8 +152,11 @@ fun MatchTypeBadge(type: String) {
             Text(
                 text = type.uppercase(),
                 color = textColor,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -177,7 +189,10 @@ fun RoomCredentialsBox(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Key,
                             contentDescription = "Room Credentials",
@@ -187,12 +202,16 @@ fun RoomCredentialsBox(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "CUSTOM ROOM CREDENTIALS",
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = FireOrange,
-                            letterSpacing = 1.sp
+                            letterSpacing = 0.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
+
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     Surface(
                         color = FireOrange.copy(alpha = 0.2f),
@@ -217,7 +236,9 @@ fun RoomCredentialsBox(
                                 text = "Copy Both",
                                 color = Color.White,
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -227,7 +248,7 @@ fun RoomCredentialsBox(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Room ID Card
                     Surface(
@@ -236,13 +257,15 @@ fun RoomCredentialsBox(
                         color = Color(0xFF1E293B)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text("ROOM ID", fontSize = 10.sp, color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
+                            Text("ROOM ID", fontSize = 10.sp, color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold, maxLines = 1)
                             Text(
                                 text = roomId,
-                                fontSize = 16.sp,
+                                fontSize = 15.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -254,13 +277,15 @@ fun RoomCredentialsBox(
                         color = Color(0xFF1E293B)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text("PASSWORD", fontSize = 10.sp, color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
+                            Text("PASSWORD", fontSize = 10.sp, color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold, maxLines = 1)
                             Text(
                                 text = roomPass,
-                                fontSize = 16.sp,
+                                fontSize = 15.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
-                                color = TrophyGold
+                                color = TrophyGold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -285,8 +310,8 @@ fun RoomCredentialsBox(
                 .padding(vertical = 8.dp),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
-                containerColor = Color(0xFFF1F5F9),
-                contentColor = Color(0xFF475569)
+                containerColor = SlateSubtle,
+                contentColor = TextSecondaryMuted
             ),
             border = BorderStroke(1.dp, SlateMutedBorder)
         ) {
@@ -297,21 +322,23 @@ fun RoomCredentialsBox(
                 Icon(
                     imageVector = Icons.Default.Info,
                     contentDescription = null,
-                    tint = Color(0xFF64748B),
+                    tint = TextSecondaryMuted,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Room ID & Password Hidden",
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
-                        color = Color(0xFF1E293B)
+                        color = TextPrimaryDark,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "Credentials will be automatically revealed here 15 minutes before match begins.",
                         fontSize = 11.sp,
-                        color = Color(0xFF64748B)
+                        color = TextSecondaryMuted
                     )
                 }
             }
@@ -322,7 +349,8 @@ fun RoomCredentialsBox(
 @Composable
 fun RealTimeNotificationBanner(
     alert: UiNotificationAlert?,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onMarkAsRead: ((String) -> Unit)? = null
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -338,14 +366,19 @@ fun RealTimeNotificationBanner(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable { onDismiss() }
+                    .clickable {
+                        if (alert.id.isNotBlank()) {
+                            onMarkAsRead?.invoke(alert.id)
+                        }
+                        onDismiss()
+                    }
                     .testTag("notification_banner"),
                 color = HighContrastDark,
                 shadowElevation = 8.dp,
                 border = BorderStroke(1.5.dp, FireOrange)
             ) {
                 Row(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -362,39 +395,105 @@ fun RealTimeNotificationBanner(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = alert.title,
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = alert.message,
                             color = Color(0xFFCBD5E1),
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
-                    if (alert.roomId != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            color = FireOrange,
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.clickable {
-                                clipboardManager.setText(AnnotatedString("${alert.roomId} / ${alert.roomPass}"))
-                                Toast.makeText(context, "Copied credentials!", Toast.LENGTH_SHORT).show()
-                                onDismiss()
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (alert.roomId != null) {
+                            Surface(
+                                color = FireOrange,
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier
+                                    .clickable {
+                                        clipboardManager.setText(AnnotatedString("${alert.roomId} / ${alert.roomPass}"))
+                                        Toast.makeText(context, "Copied credentials!", Toast.LENGTH_SHORT).show()
+                                        if (alert.id.isNotBlank()) {
+                                            onMarkAsRead?.invoke(alert.id)
+                                        }
+                                        onDismiss()
+                                    }
+                                    .testTag("banner_copy_credentials_btn")
+                            ) {
+                                Text(
+                                    text = "Copy",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                )
                             }
+                        }
+
+                        // Mark as Read Action Button
+                        Surface(
+                            color = FireOrange.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, FireOrange),
+                            modifier = Modifier
+                                .clickable {
+                                    if (alert.id.isNotBlank()) {
+                                        onMarkAsRead?.invoke(alert.id)
+                                    }
+                                    onDismiss()
+                                }
+                                .testTag("banner_mark_as_read_btn")
                         ) {
-                            Text(
-                                text = "Copy",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Mark Read",
+                                    tint = FireOrange,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Read",
+                                    color = FireOrange,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        // Dismiss button
+                        IconButton(
+                            onClick = { onDismiss() },
+                            modifier = Modifier.size(24.dp).testTag("banner_dismiss_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Dismiss",
+                                tint = Color(0xFF94A3B8),
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }

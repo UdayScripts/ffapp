@@ -1,6 +1,6 @@
 {
-  "name": "FF Tournaments",
-  "description": "Free Fire esports tournament application with admin management, live match notifications, wallet logs, and custom room coordination.",
+  "name": "eSports Arena",
+  "description": "eSports Arena — Free Fire esports tournament application with admin management, live match notifications, wallet logs, and custom room coordination.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

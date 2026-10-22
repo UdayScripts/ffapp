@@ -1,199 +1,95 @@
-# Free Fire Tournament Platform & Admin Management System
+# Private Notification Feed & Notification Clearing Controls
 
-A comprehensive Free Fire tournament and esports management Android application featuring player registration, instant simulated wallet deposits, detailed match and transaction logs, real-time match room notification updates, and a full-featured Admin Control Panel for tournament lifecycle handling, user accounts, and customizable app settings in a high-contrast minimalist light aesthetic.
+Isolates each player's notification feed so they only see their own personal updates and alerts for tournaments they have joined since signing up, while adding both bulk "Clear All" and individual per-card delete controls.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The implementation plan incorporates the answers confirmed during the initial consultation:
+> The following product decisions were confirmed during clarification and govern this implementation:
 
-- **Confirmed Match Modes**: Battle Royale supporting **Solo, Duo, and Squad** game modes across Free Fire maps (Bermuda, Purgatory, Kalahari, Alpine).
-- **Confirmed Wallet & Deposit Model**: **Instant simulated top-up wallet** for smooth demo and tournament testing, coupled with realistic deposit history, simulated transaction IDs, and live balance bookkeeping logs.
-- **Confirmed Visual Direction**: **Minimalist modern light theme** featuring crisp stark backgrounds (`#F8FAFC`, `#FFFFFF`), deep obsidian high-contrast cards (`#0F172A`), sharp amber/fire accents (`#FF5722`, `#EA580C`), clean typography, and elevated tactile surfaces.
+- **Confirmed Decision 1 — Strict Per-User & Joined-Match Scoping**: Players will only see notifications explicitly addressed to their account (`userId == currentUserId`) or broadcast alerts (such as Room ID & Password releases) for tournaments they have joined, plus global announcements sent after their signup. Notifications belonging to other users are strictly excluded.
+- **Confirmed Decision 2 — Post-Signup Timestamp Cutoff**: Each user profile tracks an account creation timestamp (`createdAt`). Any notification with a timestamp older than the player's signup time is automatically filtered out so new accounts start with a clean feed.
+- **Confirmed Decision 3 — Dual Clearing Controls (Clear All + Per-Item Delete)**: The Notification Center includes a **Clear All** action in the top app bar and an individual **Delete (Trash/Dismiss)** icon on every notification card, persisting cleared IDs both locally and in Cloud Firestore so deleted alerts never reappear.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**:
-  - **Player Experience**: 
-    - Browse upcoming, ongoing, and completed Free Fire tournaments with mode filters (Solo, Duo, Squad, Map).
-    - Register for tournaments by entering Free Fire In-Game Name (IGN) and Player UID.
-    - Inspect prize pools, entry fees, per-kill rewards, and rules.
-    - Real-time match room notification system: receives instant alerts when the Admin publishes the Room ID & Password, with one-tap copy.
-    - In-app simulated wallet: instant top-up, deposit history logs, balance ledger (entry fee deductions, prize payouts).
-    - Player Profile & Match History: comprehensive record of entered tournaments, results, placements, kills, and earnings.
-  - **Admin Control Panel**:
-    - Admin Login & Registration with secure PIN/credentials.
-    - Tournament Management: Create new tournaments, edit schedules/rules, update status (Upcoming -> Live -> Completed), and release Room ID & Password with instant notification broadcast.
-    - Match Result Settlement: Record participant kills and placements, automatically credit winners' wallets, and mark matches completed.
-    - User Management: View registered players, inspect their FF UIDs, edit wallet balances, and manage status.
-    - System Settings Customization: Customize app name, announcement marquee, support links (Discord/WhatsApp), platform fee, and maintenance mode toggle.
-    - Real-time Notification Broadcast: Admin can broadcast custom alerts (e.g. room credentials, match delays, tournament announcements) directly to players.
-
-- **Target Audience / Persona**: Free Fire esports enthusiasts, competitive squads, and tournament organizers.
-- **Key Value**: A complete, self-contained tournament management ecosystem where admins can run tournaments end-to-end and players enjoy a professional tournament experience.
+- **What It Does**: Eliminates cross-user notification leakage and historical clutter in the real-time notification engine and Notification Center screen, while giving players full control to delete individual alerts or clear their entire notification inbox.
+- **Target Audience / Persona**: Competitive Free Fire tournament players who need a private, distraction-free inbox containing only their own registration confirmations, wallet updates, prize payouts, and room credentials for matches they are registered in.
+- **Key Value**: Protects user privacy (preventing players from seeing other players' deposits, registrations, or winnings), ensures newly registered accounts are not flooded with old alerts, and lets players keep their inbox clean.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-### Key User Flows
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                              USER FLOW                                 │
-└────────────────────────────────────────────────────────────────────────┘
- [Home Dashboard] ──► [Tournament Details] ──► [Join Match (UID & IGN)]
-         │                                               │
-         ├───────────────────────────────────────────────┘
-         ▼
- [Room Credentials Alert] ──► [Copy Room ID/Pass] ──► [Play in Free Fire]
-         │
-         ▼
- [Match Completed] ──► [Check Results & History] ──► [Wallet Balance Log]
-
-┌────────────────────────────────────────────────────────────────────────┐
-│                              ADMIN FLOW                                │
-└────────────────────────────────────────────────────────────────────────┘
- [Admin Portal Auth] ──► [Admin Overview Dashboard (Metrics & Quick Actions)]
-         │
-         ├─► [Tournaments Manager] ──► [Create / Edit / Publish Room ID]
-         ├─► [Result Settlement]   ──► [Input Kills, Rank & Disburse Prizes]
-         ├─► [User Management]     ──► [Inspect Players & Adjust Balances]
-         └─► [App Settings]        ──► [Configure Announcement, Rules & Fees]
-```
-
-### Visual Identity & Theme
-- **Aesthetic Direction**: Minimalist modern light theme with deep high-contrast cards and vibrant esports fire-orange accents.
-- **Color Palette**:
-  - `Background`: `#F8FAFC` (Slate 50) & `#FFFFFF`
-  - `High-Contrast Surface`: `#0F172A` (Slate 900) for hero tournament cards and esports banners.
-  - `Surface Cards`: `#FFFFFF` with `#E2E8F0` crisp outlines and `#F1F5F9` subtle highlights.
-  - `Primary / Accent`: `#FF5722` (Vibrant Flame Orange) and `#EA580C` (Deep Fire).
-  - `Success`: `#10B981` (Emerald for deposits, prize credits, and verified status).
-  - `Live Status`: `#EF4444` (Pulse Red for live matches).
-  - `Text`: `#0F172A` (High-contrast Primary Text), `#64748B` (Secondary Muted Text).
-- **Typography & Hierarchy**:
-  - Bold headline numbers for entry fees, coin balances, and countdown timers.
-  - Clean monospaced styling for Room IDs and Free Fire UIDs for instant legibility.
+- **Key User Flows**:
+  1. **Clean First-Time Inbox**: When a new user signs up or logs in, their account creation timestamp is recorded. Only notifications occurring at or after their signup that belong to them (or their joined matches) appear in the Notification Center and real-time heads-up banner.
+  2. **Per-Item Notification Deletion**: On any notification card in the Notification Center, tapping the subtle trash/delete icon immediately removes that notification from the list with a confirmation toast (`"Notification removed"`).
+  3. **Bulk Clear All**: Tapping the **Clear All** button in the Notification Center top bar clears all currently visible notifications for the user and transitions the screen to the clean empty state (`"No notifications yet"`).
+- **Visual Identity & Theme**:
+  - *Aesthetic Direction*: High-contrast tactical esports interface matching the Free Fire Tournament Arena theme.
+  - *Color Palette & Mood*: Crisp light slate background (`#F8FAFC`) paired with white read cards, warm unread highlight cards (`#FFF7ED`), `#FF5722` (Fire Orange) accents, and `#EF4444` (Crimson Red) for destructive clear/delete actions.
+  - *Typography & Hierarchy*: Bold 13sp card titles, 12sp secondary body copy, and compact 11sp action pills with clear iconography.
+  - *Component Styling & Layout*: Material 3 `TopAppBar` action buttons (`Mark Read` and `Clear All`) with minimum 48dp accessible touch targets on per-card delete icons.
 - **Interactive Feedback & Motion**:
-  - Interactive chip filters for game modes (All, Solo, Duo, Squad).
-  - One-tap "Copy Room ID" with visual checkmark indicator and haptic/toast feedback.
-  - Real-time in-app notification badge and floating snackbar alert when room credentials drop.
-  - Modal sheets for Instant Wallet Top-Up and Tournament Registration.
+  - Instant optimistic UI removal when deleting a single notification or clearing all notifications, accompanied by a lightweight toast confirmation.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Persistence Strategy via Room Database**
-  - *Chosen Approach*: Implement a structured Room Database with pre-seeded initial tournaments, sample players, deposit logs, and settings, providing instantaneous reactive queries (`Flow`) to both user and admin views.
-  - *Why*: Room provides zero-latency updates; when an admin creates a tournament or releases room credentials, all user UI components instantly reflect the new state without requiring cloud backend configuration.
-  - *Alternative Considered*: Static in-memory lists (lost on app process death) or external cloud setup (adds latency and setup barriers).
-- **Decision 2: Dual Role Mode (Player & Admin Switcher)**
-  - *Chosen Approach*: Include dedicated Admin Authentication (Login & Register) along with an intuitive profile mode-switch toggle so reviewers and users can seamlessly experience both sides of the app.
-  - *Why*: Guarantees easy evaluation of tournament creation, room credential alerts, and result payouts.
-- **Decision 3: Real-Time Notification System**
-  - *Chosen Approach*: An in-app Notification Center backed by Room Database, combined with an active Kotlin Coroutine StateFlow event bus that triggers immediate high-priority banner alerts in the top bar whenever a room ID is published or a tournament status changes.
-  - *Why*: Gives players the critical real-time cue to join the custom room before the match starts without missing room keys.
+- **Decision 1: Client + Cloud Hybrid Filtering with Signup Timestamp Gate**
+  - *Chosen Approach*: Combine real-time streams of the user's profile (`createdAt`), the user's joined tournament IDs (`userParticipations`), Cleared Notification IDs, and the Firestore notifications feed. Filter both the Notification Center list and the real-time push banner using the same privacy predicate.
+  - *Why*: Guarantees that personal notifications for User A are never shown to User B in either the inbox list or the live floating banner, while still allowing multi-recipient tournament room key broadcasts to reach only the participants of that match.
+  - *Alternatives Considered*: Separate subcollections per user for all notifications—passed over because tournament room credentials are broadcast once per match and matched dynamically against registered participants.
+- **Decision 2: Optimistic Local + Cloud Persistence for Cleared Notifications**
+  - *Chosen Approach*: Store cleared notification IDs in `SharedPreferences` scoped per user ID for instant zero-latency UI removal, while also recording the user ID in a `clearedByUsers` array on shared Firestore notification documents (or deleting personal notification documents outright).
+  - *Why*: Ensures cleared items disappear immediately on tap and stay hidden across app restarts.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
 
-### System Architecture Diagram
+- **Architecture & Component Diagram**:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                          PRESENTATION LAYER                            │
-├──────────────────────────────────┬─────────────────────────────────────┤
-│          Player UI               │               Admin UI              │
-│  - DashboardScreen               │  - AdminDashboardScreen             │
-│  - TournamentDetailScreen        │  - AdminTournamentEditorScreen      │
-│  - WalletScreen & DepositDialog  │  - AdminMatchSettlementScreen       │
-│  - MatchHistoryScreen            │  - AdminUserManagementScreen        │
-│  - NotificationCenterScreen      │  - AdminAppSettingsScreen           │
-└─────────────────┬────────────────┴──────────────────┬──────────────────┘
-                  │                                   │
-                  ▼                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                          VIEWMODEL LAYER                               │
-│  - TournamentViewModel (Player match browsing, joining, filtering)     │
-│  - WalletViewModel (Balance, instant deposit, transaction log)         │
-│  - NotificationViewModel (Live notifications, room alerts, badges)     │
-│  - AdminViewModel (CRUD tournaments, user moderation, app settings)   │
-└─────────────────────────────────┬──────────────────────────────────────┘
-                                  │
-                                  ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                          REPOSITORY LAYER                              │
-│  - TournamentRepository                                                │
-│  - WalletRepository                                                    │
-│  - NotificationRepository                                              │
-│  - AppSettingsRepository                                               │
-└─────────────────────────────────┬──────────────────────────────────────┘
-                                  │
-                                  ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                   LOCAL DATABASE LAYER (ROOM)                          │
-│  - Entities:                                                           │
-│      • TournamentEntity (id, title, mode, map, entryFee, prizePool,    │
-│                          perKill, maxPlayers, registeredCount,         │
-│                          scheduleTime, status, roomId, roomPass)       │
-│      • MatchParticipantEntity (tournamentId, userId, ign, ffUid, kills,│
-│                                placement, prizeWon)                    │
-│      • UserEntity (id, username, email, ffUid, walletBalance, isAdmin) │
-│      • DepositTransactionEntity (id, userId, amount, type, status,     │
-│                                  timestamp, referenceId)               │
-│      • NotificationEntity (id, title, message, type, timestamp, isRead)│
-│      • AppSettingsEntity (id, appName, bannerText, platformFee, etc.)  │
-└────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       Cloud Firestore Backend                           │
+│  ┌──────────────────────┐  ┌──────────────────────┐  ┌───────────────┐  │
+│  │       users          │  │    notifications     │  │ participations│  │
+│  │ • createdAt: Long    │  │ • userId: String?    │  │ • tournamentId│  │
+│  │ • id: String         │  │ • tournamentId: Str? │  │ • userId      │  │
+│  └──────────┬───────────┘  │ • timestamp: Long    │  └───────┬───────┘  │
+│             │              │ • clearedByUsers: [] │          │          │
+└─────────────┼──────────────┴──────────┬───────────┴──────────┼──────────┘
+              │                         │                      │
+              ▼                         ▼                      ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     AppViewModel Reactive Filter                        │
+│  • Privacy Gate:                                                        │
+│    1. Exclude if id in clearedIds or userId in notif.clearedByUsers     │
+│    2. Exclude if notif.timestamp < user.createdAt                       │
+│    3. If notif.userId != null -> require notif.userId == currentUserId  │
+│    4. If notif.tournamentId != null (Room Key / Match Update) ->        │
+│       require notif.tournamentId in joinedTournamentIds (or Announcement│
+│       after signup)                                                     │
+└──────────────────┬───────────────────────────────────┬──────────────────┘
+                   │                                   │
+                   ▼                                   ▼
+┌─────────────────────────────────────┐ ┌─────────────────────────────────┐
+│      NotificationCenterScreen       │ │   Real-Time Push & Banner Gate  │
+│  • TopBar: [Mark Read] [Clear All]  │ │  • Only triggers system tray &  │
+│  • NotificationCard:                │ │    in-app banner if notification│
+│    - [Mark as Read] pill            │ │    passes the user privacy &    │
+│    - [Delete / Clear] icon button   │ │    signup timestamp filter      │
+└─────────────────────────────────────┘ └─────────────────────────────────┘
 ```
 
-### Core Entities & Data Schema
-1. **Tournament**:
-   - `id: String`, `title: String`, `matchType: MatchType (SOLO, DUO, SQUAD)`, `map: String (Bermuda, Purgatory, Kalahari, Alpine)`
-   - `entryFee: Int`, `prizePool: Int`, `perKillReward: Int`, `maxSlots: Int`, `joinedSlots: Int`
-   - `matchTime: String`, `status: MatchStatus (UPCOMING, LIVE, COMPLETED, CANCELLED)`
-   - `roomId: String?`, `roomPassword: String?`, `roomNotice: String?`
-2. **Participant**:
-   - `tournamentId: String`, `userId: String`, `ffIgn: String`, `ffUid: String`
-   - `kills: Int`, `rank: Int`, `payout: Int`
-3. **Wallet & Balance Log**:
-   - `transactionId: String`, `userId: String`, `amount: Int`, `type: TxType (DEPOSIT, ENTRY_FEE, PRIZE_WIN)`
-   - `title: String`, `timestamp: Long`, `status: String (SUCCESS)`
-4. **Notification**:
-   - `id: String`, `title: String`, `body: String`, `type: String (ROOM_UPDATE, MATCH_RESULT, SYSTEM)`
-   - `timestamp: Long`, `isRead: Boolean`
-5. **App Settings**:
-   - `appName: String`, `announcementText: String`, `supportContact: String`, `maintenanceMode: Boolean`, `minDeposit: Int`
-
----
-
-## 5. Implementation Stages (To Be Executed Upon Approval)
-
-1. **Step 1: Project Metadata & Dependencies**:
-   - Set app name in `metadata.json` ("Free Fire Tournaments") and `strings.xml`.
-   - Verify Room & Compose dependencies in `app/build.gradle.kts`.
-2. **Step 2: Database & Data Layer**:
-   - Create Room Entities, DAOs, Database, and pre-seeded database callback with realistic Free Fire tournaments and demo match histories.
-   - Implement Repositories providing reactive `Flow` streams.
-3. **Step 3: Business Logic & ViewModels**:
-   - Create `TournamentViewModel`, `WalletViewModel`, `NotificationViewModel`, and `AdminViewModel`.
-4. **Step 4: Design System & Theme**:
-   - Set up the Minimalist Modern Light theme tokens, high-contrast dark card styles, typography, and accent colors in `Theme.kt` and `Color.kt`.
-5. **Step 5: Player UI Components**:
-   - Home Dashboard with mode filters, active ticker, and balance pill.
-   - Tournament details sheet with live prize breakdown and registration dialog (IGN + UID).
-   - Instant Wallet top-up dialog, deposit history list, and balance ledger.
-   - Real-time notification center and room credential popups.
-   - User profile and match results history.
-6. **Step 6: Admin Panel UI Components**:
-   - Admin Login/Register screen and auth guard.
-   - Admin Tournament management (create match, publish Room ID/Pass, broadcast notification).
-   - Match settlement screen (record kills, declare winners, auto-disburse winnings).
-   - User details and wallet adjustments.
-   - Custom app settings screen (app name, announcement marquee, support links).
-7. **Step 7: Verification**:
-   - Compile applet with `compile_applet` and verify zero errors.
+- **Data Model & State**:
+  - `UserDto`: Add `createdAt: Long = 0L` (populated with `System.currentTimeMillis()` on initial account creation; existing accounts without `createdAt` default to `0L` or first-seen timestamp stored locally so they don't lose legitimate post-registration alerts).
+  - `NotificationDto`: Add `clearedByUsers: List<String> = emptyList()` alongside `readByUsers: List<String>`.
+  - Local Persistence: Track `_locallyClearedNotifIds` in `SharedPreferences` (`cleared_notifs_$uid`) and record a per-user `account_first_seen_$uid` timestamp fallback.
+- **Interactive Component & State Mapping**:
+  - `clearNotification(id: String)`: Immediately adds `id` to `_locallyClearedNotifIds`, updates Firestore (`clearedByUsers` via `FieldValue.arrayUnion(userId)` or deletes if owned by `userId`), and emits a confirmation toast.
+  - `clearAllNotifications()`: Immediately adds all currently visible notification IDs to `_locallyClearedNotifIds`, batch-updates Firestore for the current user, and transitions the UI to the empty state.

@@ -1,9 +1,10 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.time.Duration
 
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
-  alias(libs.plugins.google.devtools.ksp)
+  // alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
 }
@@ -103,11 +104,11 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
   // implementation(libs.androidx.navigation.compose)
-  implementation(libs.androidx.room.ktx)
-  implementation(libs.androidx.room.runtime)
-  // implementation(libs.coil.compose)
-  implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
+  // implementation(libs.androidx.room.ktx)
+  // implementation(libs.androidx.room.runtime)
+  implementation(libs.coil.compose)
+  // implementation(libs.converter.moshi)
+  // implementation(libs.firebase.ai)
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
   implementation(libs.androidx.credentials)
@@ -117,11 +118,11 @@ dependencies {
   implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
+  // implementation(libs.logging.interceptor)
+  // implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
-  implementation(libs.retrofit)
+  // implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
@@ -135,6 +136,15 @@ dependencies {
   androidTestImplementation(libs.androidx.runner)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
-  "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
+  // "ksp"(libs.androidx.room.compiler)
+  // "ksp"(libs.moshi.kotlin.codegen)
 }
+
+tasks.withType<Test> {
+  failFast = true
+  timeout.set(Duration.ofMinutes(2))
+  testLogging {
+    events("passed", "failed", "skipped")
+  }
+}
+

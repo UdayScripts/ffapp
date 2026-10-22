@@ -40,10 +40,12 @@ beforeEach(async () => {
   }
 });
 
-test("Unauthenticated user: cannot read tournaments or users", async () => {
+test("Unauthenticated user: cannot read tournaments, users, or support chats", async () => {
   const unauthDb = testEnv.unauthenticatedContext().firestore();
   await assertFails(unauthDb.collection("tournaments").get());
   await assertFails(unauthDb.collection("users").doc(ALICE_UID).get());
+  await assertFails(unauthDb.collection("support_chats").doc(ALICE_UID).get());
+  await assertFails(unauthDb.collection("support_chats").doc(ALICE_UID).collection("messages").get());
 });
 
 test("Authenticated user: can read tournaments", async () => {
@@ -134,4 +136,94 @@ test("User can create deposit transaction and read their own transactions", asyn
   await assertFails(
     bobDb.collection("transactions").doc("tx_alice_1").get()
   );
+});
+
+test("Support Chat: User can create their own thread, send text & photo messages, and read them", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const threadRef = aliceDb.collection("support_chats").doc(ALICE_UID);
+
+  await assertSucceeds(threadRef.set({
+    userId: ALICE_UID,
+    userName: "AliceFF",
+    userEmail: "alice@example.com",
+    userFfIgn: "AlicePro",
+    userFfUid: "987654321",
+    lastMessage: "📷 Sent a screenshot of my match",
+    lastSenderId: ALICE_UID,
+    lastSenderIsAdmin: false,
+    lastMessageTimestamp: 1700000000000,
+    unreadByAdmin: 1,
+    unreadByUser: 0,
+    status: "OPEN",
+    hasImage: true
+  }));
+
+  await assertSucceeds(threadRef.collection("messages").doc("msg_1").set({
+    id: "msg_1",
+    threadUserId: ALICE_UID,
+    senderId: ALICE_UID,
+    senderName: "AliceFF",
+    isAdminSender: false,
+    messageText: "Here is my payment screenshot",
+    imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    timestamp: 1700000000000
+  }));
+
+  await assertSucceeds(threadRef.get());
+  await assertSucceeds(threadRef.collection("messages").get());
+});
+
+test("Support Chat: Another user cannot read or send messages in Alice's thread, but Admin can", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.collection("support_chats").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      userName: "AliceFF",
+      lastMessage: "Need help with withdrawal",
+      lastSenderId: ALICE_UID,
+      lastSenderIsAdmin: false,
+      lastMessageTimestamp: 1700000000000,
+      unreadByAdmin: 1,
+      unreadByUser: 0,
+      status: "OPEN"
+    });
+    await db.collection("support_chats").doc(ALICE_UID).collection("messages").doc("msg_1").set({
+      id: "msg_1",
+      threadUserId: ALICE_UID,
+      senderId: ALICE_UID,
+      senderName: "AliceFF",
+      isAdminSender: false,
+      messageText: "Need help with withdrawal",
+      timestamp: 1700000000000
+    });
+  });
+
+  // Bob cannot read or write to Alice's support chat
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  await assertFails(bobDb.collection("support_chats").doc(ALICE_UID).get());
+  await assertFails(bobDb.collection("support_chats").doc(ALICE_UID).collection("messages").get());
+  await assertFails(bobDb.collection("support_chats").doc(ALICE_UID).collection("messages").doc("msg_bob").set({
+    id: "msg_bob",
+    threadUserId: ALICE_UID,
+    senderId: BOB_UID,
+    senderName: "Bob",
+    isAdminSender: false,
+    messageText: "Hijacking thread",
+    timestamp: 1700000005000
+  }));
+
+  // Admin can list all support threads, read Alice's messages, and reply with photo
+  const adminDb = testEnv.authenticatedContext(ADMIN_UID, { email: ADMIN_EMAIL }).firestore();
+  await assertSucceeds(adminDb.collection("support_chats").get());
+  await assertSucceeds(adminDb.collection("support_chats").doc(ALICE_UID).collection("messages").get());
+  await assertSucceeds(adminDb.collection("support_chats").doc(ALICE_UID).collection("messages").doc("msg_admin_1").set({
+    id: "msg_admin_1",
+    threadUserId: ALICE_UID,
+    senderId: ADMIN_UID,
+    senderName: "Support Team",
+    isAdminSender: true,
+    messageText: "We have verified your screenshot and approved your request!",
+    imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    timestamp: 1700000010000
+  }));
 });

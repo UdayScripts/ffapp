@@ -3,6 +3,7 @@ package com.example.ui.screens.admin
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -47,12 +50,27 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.firestore.TournamentDto
 import com.example.ui.theme.FireOrange
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import com.example.ui.theme.HighContrastDark
+import com.example.ui.theme.SlateCardBg
 import com.example.ui.theme.SlateLightBg
 import com.example.ui.theme.SlateMutedBorder
 import com.example.ui.theme.TextPrimaryDark
 import com.example.ui.theme.TextSecondaryMuted
 import com.example.viewmodel.AppViewModel
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,9 +97,89 @@ fun AdminTournamentEditorScreen(viewModel: AppViewModel) {
         )
     }
 
-    val mapOptions = listOf("Bermuda", "Purgatory", "Kalahari", "Alpine")
+    val mapOptions = listOf("Bermuda", "Purgatory", "Kalahari", "Alpine", "NeXTerra", "Bermuda Remastered")
     val modeOptions = listOf("SOLO", "DUO", "SQUAD")
     val statusOptions = listOf("UPCOMING", "LIVE", "COMPLETED", "CANCELLED")
+
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var selectedDateMillis by remember { mutableStateOf<Long?>(null) }
+    var matchTimestamp by remember(existingTournament) {
+        mutableStateOf(existingTournament?.timestamp ?: (System.currentTimeMillis() + 3600000))
+    }
+
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = matchTimestamp
+    )
+    val timePickerState = rememberTimePickerState(
+        initialHour = 21,
+        initialMinute = 0,
+        is24Hour = false
+    )
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        selectedDateMillis = datePickerState.selectedDateMillis
+                        showDatePicker = false
+                        showTimePicker = true
+                    }
+                ) {
+                    Text("Next: Time", color = FireOrange, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = {
+                Text("Select Match Time", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            },
+            text = {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    TimePicker(state = timePickerState)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val cal = Calendar.getInstance()
+                        selectedDateMillis?.let { cal.timeInMillis = it }
+                        cal.set(Calendar.HOUR_OF_DAY, timePickerState.hour)
+                        cal.set(Calendar.MINUTE, timePickerState.minute)
+                        cal.set(Calendar.SECOND, 0)
+                        val finalMillis = cal.timeInMillis
+
+                        val sdf = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
+                        scheduleTime = sdf.format(Date(finalMillis))
+                        matchTimestamp = finalMillis
+
+                        showTimePicker = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FireOrange)
+                ) {
+                    Text("Confirm Schedule Time")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -106,7 +204,7 @@ fun AdminTournamentEditorScreen(viewModel: AppViewModel) {
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = SlateCardBg)
             )
         }
     ) { innerPadding ->
@@ -122,11 +220,11 @@ fun AdminTournamentEditorScreen(viewModel: AppViewModel) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = SlateCardBg),
                 border = BorderStroke(1.dp, SlateMutedBorder)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Basic Tournament Info", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Basic Tournament Info", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimaryDark)
 
                     OutlinedTextField(
                         value = title,
@@ -135,9 +233,14 @@ fun AdminTournamentEditorScreen(viewModel: AppViewModel) {
                         modifier = Modifier.fillMaxWidth().testTag("editor_title_input")
                     )
 
-                    // Match Mode Selector
+                    // Match Mode Selector with horizontal scroll
                     Text("Match Format:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         modeOptions.forEach { mode ->
                             FilterChip(
                                 selected = matchType == mode,
@@ -156,14 +259,19 @@ fun AdminTournamentEditorScreen(viewModel: AppViewModel) {
                         }
                     }
 
-                    // Map Selector
-                    Text("Map:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Map Selector with smooth horizontal scroll for small width devices
+                    Text("Map (Swipe to view all):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         mapOptions.forEach { m ->
                             FilterChip(
                                 selected = mapName == m,
                                 onClick = { mapName = m },
-                                label = { Text(m, fontSize = 11.sp) },
+                                label = { Text(m, fontSize = 12.sp) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = FireOrange,
                                     selectedLabelColor = Color.White
@@ -172,21 +280,55 @@ fun AdminTournamentEditorScreen(viewModel: AppViewModel) {
                         }
                     }
 
-                    OutlinedTextField(
-                        value = scheduleTime,
-                        onValueChange = { scheduleTime = it },
-                        label = { Text("Schedule Time (e.g. Today, 09:30 PM)") },
-                        modifier = Modifier.fillMaxWidth().testTag("editor_time_input")
-                    )
+                    // Schedule Time with Date & Time Picker
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Schedule Date & Time:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
+                        OutlinedTextField(
+                            value = scheduleTime,
+                            onValueChange = { scheduleTime = it },
+                            label = { Text("Schedule Time") },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { showDatePicker = true },
+                                    modifier = Modifier.testTag("pick_date_time_icon")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CalendarMonth,
+                                        contentDescription = "Pick Date & Time",
+                                        tint = FireOrange
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("editor_time_input")
+                        )
+                        Button(
+                            onClick = { showDatePicker = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = HighContrastDark),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .testTag("pick_schedule_datetime_button")
+                        ) {
+                            Icon(Icons.Default.Schedule, contentDescription = null, tint = FireOrange, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Pick Date & Time from Calendar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
 
-                    // Status
-                    Text("Match Status:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Status with smooth horizontal scroll for small width devices
+                    Text("Match Status (Swipe to view all):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryMuted)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         statusOptions.forEach { s ->
                             FilterChip(
                                 selected = status == s,
                                 onClick = { status = s },
-                                label = { Text(s, fontSize = 11.sp) }
+                                label = { Text(s, fontSize = 12.sp) }
                             )
                         }
                     }
@@ -197,11 +339,11 @@ fun AdminTournamentEditorScreen(viewModel: AppViewModel) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = SlateCardBg),
                 border = BorderStroke(1.dp, SlateMutedBorder)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Economics & Capacity", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Economics & Capacity", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimaryDark)
 
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
@@ -290,7 +432,7 @@ fun AdminTournamentEditorScreen(viewModel: AppViewModel) {
                         maxSlots = maxSlots.toIntOrNull() ?: 48,
                         joinedSlots = existingTournament?.joinedSlots ?: 0,
                         scheduleTime = scheduleTime.ifBlank { "Today, 09:00 PM" },
-                        timestamp = existingTournament?.timestamp ?: (System.currentTimeMillis() + 3600000),
+                        timestamp = matchTimestamp,
                         status = status,
                         roomId = existingTournament?.roomId,
                         roomPassword = existingTournament?.roomPassword,

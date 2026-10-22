@@ -2,6 +2,7 @@ package com.example.ui.screens.admin
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,14 +16,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CurrencyRupee
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -42,6 +49,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,8 +72,10 @@ import com.example.ui.theme.FireOrange
 import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastDark
 import com.example.ui.theme.LiveRed
+import com.example.ui.theme.SlateCardBg
 import com.example.ui.theme.SlateLightBg
 import com.example.ui.theme.SlateMutedBorder
+import com.example.ui.theme.SlateSubtle
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimaryDark
 import com.example.ui.theme.TextSecondaryMuted
@@ -76,6 +88,8 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
     val users by viewModel.allUsers.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
     var userToAdjust by remember { mutableStateOf<UserDto?>(null) }
+    var userToDelete by remember { mutableStateOf<UserDto?>(null) }
+    var showDeleteAllUsersDialog by remember { mutableStateOf(false) }
 
     val filteredUsers = users.filter {
         it.username.contains(searchQuery, ignoreCase = true) ||
@@ -107,7 +121,29 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                actions = {
+                    if (users.isNotEmpty()) {
+                        TextButton(
+                            onClick = { showDeleteAllUsersDialog = true },
+                            modifier = Modifier.testTag("delete_all_users_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteForever,
+                                contentDescription = "Delete All",
+                                tint = LiveRed,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Delete All",
+                                color = LiveRed,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = SlateCardBg)
             )
         }
     ) { innerPadding ->
@@ -145,7 +181,8 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
                 UserDetailItemCard(
                     user = u,
                     onAdjustBalance = { userToAdjust = u },
-                    onToggleSuspend = { viewModel.toggleUserSuspension(u.id) }
+                    onToggleSuspend = { viewModel.toggleUserSuspension(u.id) },
+                    onDeleteUser = { userToDelete = u }
                 )
             }
 
@@ -155,92 +192,369 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
         }
     }
 
+    userToDelete?.let { u ->
+        AlertDialog(
+            onDismissRequest = { userToDelete = null },
+            containerColor = SlateCardBg,
+            title = {
+                Text("Delete User & History?", fontWeight = FontWeight.Bold, color = LiveRed)
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to permanently delete '${u.username}' (${u.email.ifBlank { u.id }}) along with all their match participations, transactions, and withdrawal history?",
+                    fontSize = 13.sp,
+                    color = TextPrimaryDark
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteUserAndHistory(u.id)
+                        userToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = LiveRed),
+                    modifier = Modifier.testTag("confirm_delete_user_button")
+                ) {
+                    Text("Delete User", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { userToDelete = null }) {
+                    Text("Cancel", color = TextSecondaryMuted)
+                }
+            }
+        )
+    }
+
+    if (showDeleteAllUsersDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllUsersDialog = false },
+            containerColor = SlateCardBg,
+            title = {
+                Text("Delete All Users & Data?", fontWeight = FontWeight.Bold, color = LiveRed)
+            },
+            text = {
+                Text(
+                    text = "This will permanently delete all users, their match history, transaction logs, withdrawal requests, tournaments, and notifications.",
+                    fontSize = 13.sp,
+                    color = TextPrimaryDark
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteAllUsersDialog = false
+                        viewModel.deleteAllPlatformData()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = LiveRed),
+                    modifier = Modifier.testTag("confirm_delete_all_users_button")
+                ) {
+                    Text("Delete All", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllUsersDialog = false }) {
+                    Text("Cancel", color = TextSecondaryMuted)
+                }
+            }
+        )
+    }
+
     // Adjust Balance Modal
     userToAdjust?.let { u ->
         var deltaInput by remember(u.id) { mutableStateOf("100") }
         var isAdd by remember(u.id) { mutableStateOf(true) }
         var reasonInput by remember(u.id) { mutableStateOf("Tournament settlement compensation") }
 
-        AlertDialog(
-            onDismissRequest = { userToAdjust = null },
-            title = {
-                Text("Adjust Wallet Balance", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "User: ${u.username} (${u.ffIgn})\nCurrent Balance: ₹${u.walletBalance}",
-                        fontSize = 13.sp,
-                        color = TextPrimaryDark,
-                        fontWeight = FontWeight.SemiBold
-                    )
+        val deltaAmt = deltaInput.toIntOrNull() ?: 0
+        val projectedBal = if (isAdd) u.walletBalance + deltaAmt else (u.walletBalance - deltaAmt).coerceAtLeast(0)
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { isAdd = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isAdd) SuccessGreen else Color(0xFFF1F5F9),
-                                contentColor = if (isAdd) Color.White else TextPrimaryDark
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
+        Dialog(
+            onDismissRequest = { userToAdjust = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .clickable { userToAdjust = null },
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .clickable(enabled = false) {}
+                        .clip(RoundedCornerShape(24.dp)),
+                    shape = RoundedCornerShape(24.dp),
+                    color = SlateCardBg,
+                    border = BorderStroke(1.dp, SlateMutedBorder),
+                    shadowElevation = 16.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        // Header
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(HighContrastDark, Color(0xFF1E293B))
+                                    )
+                                )
+                                .padding(horizontal = 18.dp, vertical = 16.dp)
                         ) {
-                            Text("+ Credit Coins")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .background(TrophyGold.copy(alpha = 0.2f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountBalanceWallet,
+                                            contentDescription = null,
+                                            tint = TrophyGold,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "Adjust Player Balance",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = "${u.username} • ${u.ffIgn}",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = { userToAdjust = null },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Close",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
                         }
 
-                        Button(
-                            onClick = { isAdd = false },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (!isAdd) LiveRed else Color(0xFFF1F5F9),
-                                contentColor = if (!isAdd) Color.White else TextPrimaryDark
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
+                        // Content
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            Text("- Debit Coins")
+                            // Balance Impact Card
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = SlateSubtle,
+                                border = BorderStroke(1.dp, SlateMutedBorder),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Current Balance", fontSize = 11.sp, color = TextSecondaryMuted)
+                                        Text("₹${u.walletBalance}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                                    }
+
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = if (isAdd) "After Credit (+₹$deltaAmt)" else "After Debit (-₹$deltaAmt)",
+                                            fontSize = 11.sp,
+                                            color = if (isAdd) SuccessGreen else LiveRed,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            text = "₹$projectedBal",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isAdd) SuccessGreen else LiveRed
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Credit vs Debit Selector
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isAdd) SuccessGreen else SlateSubtle,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { isAdd = true }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "+ Credit Coins",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = if (isAdd) Color.White else TextPrimaryDark
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (!isAdd) LiveRed else SlateSubtle,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { isAdd = false }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "- Debit Coins",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = if (!isAdd) Color.White else TextPrimaryDark
+                                        )
+                                    }
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = deltaInput,
+                                onValueChange = { deltaInput = it.filter { c -> c.isDigit() } },
+                                label = { Text("Amount (₹)") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.CurrencyRupee,
+                                        contentDescription = null,
+                                        tint = if (isAdd) SuccessGreen else LiveRed,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("adjust_amount_input")
+                            )
+
+                            // Quick Amount Pills
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(50, 100, 200, 500).forEach { quick ->
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = SlateSubtle,
+                                        border = BorderStroke(1.dp, SlateMutedBorder),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { deltaInput = quick.toString() }
+                                    ) {
+                                        Text(
+                                            text = "₹$quick",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = TextPrimaryDark,
+                                            modifier = Modifier
+                                                .padding(vertical = 6.dp)
+                                                .fillMaxWidth(),
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = reasonInput,
+                                onValueChange = { reasonInput = it },
+                                label = { Text("Reason / Note for Ledger") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("adjust_reason_input")
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { userToAdjust = null },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                ) {
+                                    Text("Cancel", color = TextPrimaryDark)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        val amount = deltaInput.toIntOrNull() ?: 0
+                                        if (amount > 0) {
+                                            val finalDelta = if (isAdd) amount else -amount
+                                            viewModel.adjustUserBalance(u.id, finalDelta, reasonInput)
+                                            userToAdjust = null
+                                        }
+                                    },
+                                    enabled = deltaAmt > 0,
+                                    colors = ButtonDefaults.buttonColors(containerColor = if (isAdd) SuccessGreen else LiveRed),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .weight(1.5f)
+                                        .height(48.dp)
+                                        .testTag("confirm_adjust_balance_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Confirm", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                            }
                         }
                     }
-
-                    OutlinedTextField(
-                        value = deltaInput,
-                        onValueChange = { deltaInput = it.filter { c -> c.isDigit() } },
-                        label = { Text("Amount (₹)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("adjust_amount_input")
-                    )
-
-                    OutlinedTextField(
-                        value = reasonInput,
-                        onValueChange = { reasonInput = it },
-                        label = { Text("Reason / Note for Ledger") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("adjust_reason_input")
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val amount = deltaInput.toIntOrNull() ?: 0
-                        if (amount > 0) {
-                            val finalDelta = if (isAdd) amount else -amount
-                            viewModel.adjustUserBalance(u.id, finalDelta, reasonInput)
-                            userToAdjust = null
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
-                    modifier = Modifier.testTag("confirm_adjust_balance_button")
-                ) {
-                    Text("Apply Adjustment")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { userToAdjust = null }) {
-                    Text("Cancel")
                 }
             }
-        )
+        }
     }
 }
 
@@ -248,12 +562,13 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
 fun UserDetailItemCard(
     user: UserDto,
     onAdjustBalance: () -> Unit,
-    onToggleSuspend: () -> Unit
+    onToggleSuspend: () -> Unit,
+    onDeleteUser: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = SlateCardBg),
         border = BorderStroke(1.dp, SlateMutedBorder)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -266,7 +581,7 @@ fun UserDetailItemCard(
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .background(if (user.isAdmin) HighContrastDark else Color(0xFFF1F5F9), CircleShape),
+                            .background(if (user.isAdmin) HighContrastDark else SlateSubtle, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -333,7 +648,7 @@ fun UserDetailItemCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                    .background(SlateSubtle, RoundedCornerShape(8.dp))
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
@@ -362,7 +677,7 @@ fun UserDetailItemCard(
                 ) {
                     Icon(imageVector = Icons.Default.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(14.dp), tint = FireOrange)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Adjust Balance", fontSize = 12.sp, color = TextPrimaryDark)
+                    Text("Balance", fontSize = 12.sp, color = TextPrimaryDark)
                 }
 
                 OutlinedButton(
@@ -379,6 +694,19 @@ fun UserDetailItemCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(if (user.isSuspended) "Activate" else "Suspend", fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = onDeleteUser,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = LiveRed),
+                    modifier = Modifier.testTag("delete_user_button_${user.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteForever,
+                        contentDescription = "Delete User",
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
             }
         }

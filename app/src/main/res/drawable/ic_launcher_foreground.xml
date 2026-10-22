@@ -1,34 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Esports Tournament Shield & Flame Logo (Safe zone 66dp centered at 54,54) -->
-    <!-- Shield Outline -->
-    <path
-        android:pathData="M54,26 L76,34 L76,56 C76,68 66,78 54,82 C42,78 32,68 32,56 L32,34 Z"
-        android:fillColor="#FF5722" />
-    <!-- Inner Dark Crest -->
-    <path
-        android:pathData="M54,29 L73,36 L73,56 C73,66 64,75 54,79 C44,75 35,66 35,56 L35,36 Z"
-        android:fillColor="#1E293B" />
-    <!-- Golden Crown / Battle Wings -->
-    <path
-        android:pathData="M44,42 L50,48 L54,38 L58,48 L64,42 L62,54 L46,54 Z"
-        android:fillColor="#FBBF24" />
-    <!-- Esports Flame Core -->
-    <path
-        android:pathData="M54,44 C56,48 60,51 60,56 C60,60 57,63 54,63 C51,63 48,60 48,56 C48,52 52,48 54,44 Z"
-        android:fillColor="#FF7A00" />
-    <!-- Inner Bright Flame -->
-    <path
-        android:pathData="M54,50 C55,52 57,54 57,57 C57,59 55,61 54,61 C53,61 51,59 51,57 C51,55 53,53 54,50 Z"
-        android:fillColor="#FFFBEB" />
-    <!-- Crosshair Target Marks -->
-    <path
-        android:pathData="M54,23 L54,27 M54,81 L54,85 M29,54 L33,54 M75,54 L79,54"
-        android:strokeWidth="2"
-        android:strokeColor="#FF5722"
-        android:strokeLineCap="round" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="66dp"
+        android:height="66dp"
+        android:drawable="@drawable/app_logo"
+        android:gravity="center" />
+</layer-list>

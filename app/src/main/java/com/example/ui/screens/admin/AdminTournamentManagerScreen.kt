@@ -16,15 +16,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,6 +48,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,11 +67,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.firestore.TournamentDto
 import com.example.ui.components.MatchTypeBadge
 import com.example.ui.components.StatusBadge
+import androidx.compose.ui.draw.clip
 import com.example.ui.theme.FireOrange
 import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastDark
+import com.example.ui.theme.LiveRed
+import com.example.ui.theme.SlateCardBg
 import com.example.ui.theme.SlateLightBg
 import com.example.ui.theme.SlateMutedBorder
+import com.example.ui.theme.SlateSubtle
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimaryDark
 import com.example.ui.theme.TextSecondaryMuted
@@ -101,7 +114,7 @@ fun AdminTournamentManagerScreen(viewModel: AppViewModel) {
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = SlateCardBg)
             )
         },
         floatingActionButton = {
@@ -156,89 +169,294 @@ fun AdminTournamentManagerScreen(viewModel: AppViewModel) {
         var roomPassInput by remember(t.id) { mutableStateOf(t.roomPassword ?: "") }
         var roomNoticeInput by remember(t.id) { mutableStateOf(t.roomNotice ?: "Join Custom Room now!") }
 
-        AlertDialog(
+        Dialog(
             onDismissRequest = { showRoomDialogForTournament = null },
-            title = {
-                Text("Publish Room Credentials", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "Publishing will immediately reveal keys in player dashboard and broadcast an alert.",
-                        fontSize = 12.sp,
-                        color = TextSecondaryMuted
-                    )
-
-                    OutlinedTextField(
-                        value = roomIdInput,
-                        onValueChange = { roomIdInput = it },
-                        label = { Text("Custom Room ID") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("admin_room_id_input")
-                    )
-
-                    OutlinedTextField(
-                        value = roomPassInput,
-                        onValueChange = { roomPassInput = it },
-                        label = { Text("Room Password") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("admin_room_pass_input")
-                    )
-
-                    OutlinedTextField(
-                        value = roomNoticeInput,
-                        onValueChange = { roomNoticeInput = it },
-                        label = { Text("Notice / Instructions") },
-                        maxLines = 2,
-                        modifier = Modifier.fillMaxWidth().testTag("admin_room_notice_input")
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (roomIdInput.isNotBlank() && roomPassInput.isNotBlank()) {
-                            viewModel.updateRoomCredentials(t.id, roomIdInput, roomPassInput, roomNoticeInput)
-                            showRoomDialogForTournament = null
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
-                    modifier = Modifier.testTag("admin_save_room_button")
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .clickable { showRoomDialogForTournament = null },
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .clickable(enabled = false) {}
+                        .clip(RoundedCornerShape(24.dp)),
+                    shape = RoundedCornerShape(24.dp),
+                    color = SlateCardBg,
+                    border = BorderStroke(1.dp, SlateMutedBorder),
+                    shadowElevation = 16.dp
                 ) {
-                    Text("Publish & Notify Players")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRoomDialogForTournament = null }) {
-                    Text("Cancel")
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        // Header
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(HighContrastDark, Color(0xFF1E293B))
+                                    )
+                                )
+                                .padding(horizontal = 18.dp, vertical = 16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .background(FireOrange.copy(alpha = 0.2f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Key,
+                                            contentDescription = null,
+                                            tint = FireOrange,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "Publish Room Keys",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = t.title,
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = { showRoomDialogForTournament = null },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Close",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Content
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = FireOrange.copy(alpha = 0.14f),
+                                border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.4f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Key,
+                                        contentDescription = null,
+                                        tint = FireOrange,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Submitting will immediately push the Room ID & Password to all joined players' in-app banners & inbox.",
+                                        fontSize = 11.sp,
+                                        color = FireOrangeDark,
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = roomIdInput,
+                                onValueChange = { roomIdInput = it },
+                                label = { Text("Custom Room ID") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("admin_room_id_input")
+                            )
+
+                            OutlinedTextField(
+                                value = roomPassInput,
+                                onValueChange = { roomPassInput = it },
+                                label = { Text("Room Password") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("admin_room_pass_input")
+                            )
+
+                            OutlinedTextField(
+                                value = roomNoticeInput,
+                                onValueChange = { roomNoticeInput = it },
+                                label = { Text("Notice / Instructions") },
+                                maxLines = 2,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("admin_room_notice_input")
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { showRoomDialogForTournament = null },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                ) {
+                                    Text("Cancel", color = TextPrimaryDark)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (roomIdInput.isNotBlank() && roomPassInput.isNotBlank()) {
+                                            viewModel.updateRoomCredentials(t.id, roomIdInput, roomPassInput, roomNoticeInput)
+                                            showRoomDialogForTournament = null
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .weight(1.6f)
+                                        .height(48.dp)
+                                        .testTag("admin_save_room_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Publish & Alert", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        )
+        }
     }
 
     // Confirm Delete Dialog
     deleteConfirmTournament?.let { t ->
-        AlertDialog(
+        Dialog(
             onDismissRequest = { deleteConfirmTournament = null },
-            title = { Text("Delete Tournament?") },
-            text = { Text("Are you sure you want to delete '${t.title}'? This action cannot be undone.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteTournament(t.id)
-                        deleteConfirmTournament = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .clickable { deleteConfirmTournament = null },
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.88f)
+                        .clickable(enabled = false) {}
+                        .clip(RoundedCornerShape(20.dp)),
+                    shape = RoundedCornerShape(20.dp),
+                    color = SlateCardBg,
+                    shadowElevation = 16.dp
                 ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteConfirmTournament = null }) {
-                    Text("Cancel")
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(54.dp)
+                                .background(LiveRed.copy(alpha = 0.15f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = LiveRed,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Delete Tournament?",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            color = TextPrimaryDark
+                        )
+
+                        Text(
+                            text = "Are you sure you want to permanently delete '${t.title}'? This action cannot be undone.",
+                            fontSize = 12.sp,
+                            color = TextSecondaryMuted,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 16.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { deleteConfirmTournament = null },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp)
+                            ) {
+                                Text("Cancel", color = TextPrimaryDark)
+                            }
+
+                            Button(
+                                onClick = {
+                                    viewModel.deleteTournament(t.id)
+                                    deleteConfirmTournament = null
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = LiveRed),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp)
+                            ) {
+                                Text("Delete", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
-        )
+        }
     }
 }
 
@@ -253,7 +471,7 @@ fun AdminTournamentItemCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = SlateCardBg),
         border = BorderStroke(1.dp, SlateMutedBorder)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -269,7 +487,7 @@ fun AdminTournamentItemCard(
                         text = tournament.map,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF475569)
+                        color = TextSecondaryMuted
                     )
                 }
                 StatusBadge(tournament.status)
@@ -295,7 +513,7 @@ fun AdminTournamentItemCard(
             // Room status line
             if (!tournament.roomId.isNullOrBlank()) {
                 Surface(
-                    color = Color(0xFFF1F5F9),
+                    color = SlateSubtle,
                     shape = RoundedCornerShape(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {

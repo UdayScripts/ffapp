@@ -33,7 +33,7 @@ service cloud.firestore {
     function isValidTournament(data) {
       return (!('id' in data) || (data.id is string && data.id.size() <= 64)) &&
              (!('title' in data) || (data.title is string && data.title.size() <= 100)) &&
-             (!('matchType' in data) || data.matchType is string) &&
+             (!('matchType' in data) || (data.matchType is string && data.matchType.size() <= 30)) &&
              (!('map' in data) || (data.map is string && data.map.size() <= 50)) &&
              (!('entryFee' in data) || (data.entryFee is number && data.entryFee >= 0)) &&
              (!('prizePool' in data) || (data.prizePool is number && data.prizePool >= 0)) &&
@@ -66,12 +66,16 @@ service cloud.firestore {
              (!('inGameName' in data) || (data.inGameName is string && data.inGameName.size() <= 50)) &&
              (!('inGameId' in data) || (data.inGameId is string && data.inGameId.size() <= 50)) &&
              (!('walletBalance' in data) || data.walletBalance is number) &&
+             (!('winningBalance' in data) || data.winningBalance == null || data.winningBalance is number) &&
+             (!('totalWithdrawn' in data) || data.totalWithdrawn is number) &&
              (!('balance' in data) || data.balance is number) &&
              (!('isAdmin' in data) || data.isAdmin is bool) &&
              (!('isSuspended' in data) || data.isSuspended is bool) &&
              (!('matchesPlayed' in data) || data.matchesPlayed is number) &&
              (!('totalKills' in data) || data.totalKills is number) &&
              (!('totalWinnings' in data) || data.totalWinnings is number) &&
+             (!('bonusClaimed' in data) || data.bonusClaimed is bool) &&
+             (!('signupTimestamp' in data) || data.signupTimestamp is number) &&
              (!('createdAt' in data) || data.createdAt == null || data.createdAt is timestamp) &&
              (!('updatedAt' in data) || data.updatedAt == null || data.updatedAt is timestamp);
     }
@@ -96,6 +100,7 @@ service cloud.firestore {
              (!('type' in data) || (data.type is string && data.type.size() <= 30)) &&
              (!('amount' in data) || data.amount is number) &&
              (!('description' in data) || (data.description is string && data.description.size() <= 200)) &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 200)) &&
              (!('status' in data) || (data.status is string && data.status.size() <= 30)) &&
              (!('referenceId' in data) || (data.referenceId is string && data.referenceId.size() <= 100)) &&
              (!('timestamp' in data) || data.timestamp is number || data.timestamp is timestamp) &&
@@ -112,7 +117,9 @@ service cloud.firestore {
              (!('roomPassword' in data) || data.roomPassword == null || (data.roomPassword is string && data.roomPassword.size() <= 50)) &&
              (!('userId' in data) || data.userId == null || (data.userId is string && data.userId.size() <= 128)) &&
              (!('timestamp' in data) || data.timestamp is number || data.timestamp is timestamp) &&
-             (!('isRead' in data) || data.isRead is bool);
+             (!('isRead' in data) || data.isRead is bool) &&
+             (!('readByUsers' in data) || data.readByUsers is list) &&
+             (!('clearedByUsers' in data) || data.clearedByUsers is list);
     }
 
     function isValidAppSettings(data) {
@@ -126,63 +133,147 @@ service cloud.firestore {
              (!('rulesAndGuidelines' in data) || (data.rulesAndGuidelines is string && data.rulesAndGuidelines.size() <= 2000));
     }
 
+    function isValidSupportThread(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() <= 100 &&
+             (!('userEmail' in data) || (data.userEmail is string && data.userEmail.size() <= 150)) &&
+             (!('userFfIgn' in data) || (data.userFfIgn is string && data.userFfIgn.size() <= 60)) &&
+             (!('userFfUid' in data) || (data.userFfUid is string && data.userFfUid.size() <= 60)) &&
+             data.lastMessage is string && data.lastMessage.size() <= 1000 &&
+             data.lastSenderId is string && data.lastSenderId.size() <= 128 &&
+             (!('lastSenderIsAdmin' in data) || data.lastSenderIsAdmin is bool) &&
+             data.lastMessageTimestamp is number &&
+             (!('unreadByAdmin' in data) || (data.unreadByAdmin is number && data.unreadByAdmin >= 0)) &&
+             (!('unreadByUser' in data) || (data.unreadByUser is number && data.unreadByUser >= 0)) &&
+             data.status is string && data.status.size() <= 30 &&
+             (!('hasImage' in data) || data.hasImage is bool) &&
+             (!('updatedAt' in data) || data.updatedAt == null || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidSupportMessage(data) {
+      return data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.threadUserId is string && data.threadUserId.size() >= 1 && data.threadUserId.size() <= 128 &&
+             data.senderId is string && data.senderId.size() >= 1 && data.senderId.size() <= 128 &&
+             data.senderName is string && data.senderName.size() <= 100 &&
+             data.isAdminSender is bool &&
+             data.messageText is string && data.messageText.size() <= 2000 &&
+             (!('imageBase64' in data) || data.imageBase64 == null || (data.imageBase64 is string && data.imageBase64.size() <= 750000)) &&
+             data.timestamp is number &&
+             (!('createdAt' in data) || data.createdAt == null || (data.createdAt is timestamp && data.createdAt <= request.time));
+    }
+
     match /tournaments/{tournamentId} {
       allow get, list: if isSignedIn();
       allow create: if isAdmin() && isValidTournament(incoming());
-      allow update: if (isAdmin() && isValidTournament(incoming())) ||
-                       (isSignedIn() && isValidTournament(incoming()) &&
-                        (incoming().diff(existing()).affectedKeys().hasOnly(['joinedSlots', 'updatedAt']) ||
-                         incoming().diff(existing()).affectedKeys().hasOnly(['roomId', 'roomPassword', 'roomNotice', 'updatedAt'])));
       allow delete: if isAdmin();
+      allow update: if isSignedIn() && isValidTournament(incoming()) && (
+        isAdmin() ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['joinedSlots'])
+      );
 
       match /participants/{participantId} {
         allow get, list: if isSignedIn();
-        allow create: if isSignedIn() && isValidParticipant(incoming());
-        allow update, delete: if isAdmin();
+        allow create, update: if isSignedIn() && isValidParticipant(incoming());
+        allow delete: if isSignedIn();
       }
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidUserProfile(incoming());
-      allow update: if isSignedIn() && ((request.auth.uid == userId && isValidUserProfile(incoming())) || (isAdmin() && isValidUserProfile(incoming())));
-      allow delete: if isAdmin();
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn() && (isAdmin() || resource.data.id == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow create, update: if isSignedIn() && isValidId(userId) && isValidUserProfile(incoming()) && (request.auth.uid == userId || isAdmin());
+      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
 
       match /transactions/{transactionId} {
         allow get, list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-        allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidTransaction(incoming());
-        allow update, delete: if isAdmin();
+        allow create, update: if isSignedIn() && isValidTransaction(incoming()) && (request.auth.uid == userId || isAdmin());
+        allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }
 
       match /participations/{participantId} {
         allow get, list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-        allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidParticipant(incoming());
-        allow update, delete: if isAdmin() || isSignedIn();
+        allow create, update: if isSignedIn() && isValidParticipant(incoming()) && (request.auth.uid == userId || isAdmin());
+        allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }
     }
 
     match /participants/{participantId} {
       allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && isValidParticipant(incoming());
-      allow update, delete: if isAdmin() || isSignedIn();
+      allow create, update: if isSignedIn() && isValidParticipant(incoming());
+      allow delete: if isAdmin();
     }
 
     match /transactions/{transactionId} {
       allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidTransaction(incoming());
+      allow create: if isSignedIn() && isValidTransaction(incoming()) && (incoming().userId == request.auth.uid || isAdmin());
       allow update, delete: if isAdmin();
     }
 
     match /notifications/{notificationId} {
       allow get, list: if isSignedIn();
-      allow create, update, delete: if (isAdmin() || isSignedIn()) && isValidNotification(incoming());
+      allow create: if (isAdmin() || isSignedIn()) && isValidNotification(incoming());
+      allow update: if isAdmin() || isSignedIn();
+      allow delete: if isAdmin() || isSignedIn();
+    }
+
+    match /bonus_claims/{userId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false; // Cryptographically immutable
+    }
+
+    match /device_bonus_claims/{deviceId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false; // Cryptographically immutable
     }
 
     match /app_settings/{settingId} {
       allow get, list: if isSignedIn();
       allow create, update: if (isAdmin() || isSignedIn()) && isValidAppSettings(incoming());
       allow delete: if isAdmin() || isSignedIn();
+    }
+
+    match /withdrawals/{withdrawalId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    match /support_chats/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       (request.auth.uid == userId || isAdmin()) &&
+                       incoming().userId == userId &&
+                       isValidSupportThread(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidSupportThread(incoming()) &&
+                       (request.auth.uid == userId || isAdmin()) &&
+                       incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(messageId) && (request.auth.uid == userId || isAdmin());
+        allow list: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         (request.auth.uid == userId || isAdmin()) &&
+                         incoming().threadUserId == userId &&
+                         incoming().senderId == request.auth.uid &&
+                         isValidSupportMessage(incoming());
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         isValidSupportMessage(incoming()) &&
+                         (request.auth.uid == userId || isAdmin()) &&
+                         incoming().threadUserId == existing().threadUserId &&
+                         incoming().senderId == existing().senderId;
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(messageId) && (request.auth.uid == userId || isAdmin());
+      }
     }
 
     match /admins/{adminId} {

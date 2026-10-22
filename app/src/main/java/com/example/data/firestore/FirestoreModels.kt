@@ -53,15 +53,31 @@ data class UserDto(
     val email: String = "",
     val ffUid: String = "",
     val ffIgn: String = "",
-    val walletBalance: Int = 200,
+    val walletBalance: Int = 0,
+    val winningBalance: Int? = null, // Withdrawable balance from match prizes (null on legacy docs)
+    val totalWithdrawn: Int = 0,
     val isAdmin: Boolean = false,
     val isSuspended: Boolean = false,
     val matchesPlayed: Int = 0,
     val totalKills: Int = 0,
     val totalWinnings: Int = 0,
+    val bonusClaimed: Boolean = false,
+    val signupTimestamp: Long = 0L,
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
-)
+) {
+    // Only winnings from matches can be withdrawn, constrained by current wallet balance
+    val effectiveWinningBalance: Int
+        get() {
+            val fromLifetime = (totalWinnings - totalWithdrawn).coerceAtLeast(0)
+            val availableWin = if (winningBalance != null) {
+                if (totalWithdrawn > 0) minOf(winningBalance, fromLifetime) else winningBalance
+            } else {
+                fromLifetime
+            }
+            return availableWin.coerceAtLeast(0).coerceAtMost(walletBalance.coerceAtLeast(0))
+        }
+}
 
 @IgnoreExtraProperties
 data class TransactionDto(
@@ -87,18 +103,112 @@ data class NotificationDto(
     val roomPassword: String? = null,
     val userId: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
-    val isRead: Boolean = false
+    val isRead: Boolean = false,
+    val readByUsers: List<String> = emptyList(),
+    val clearedByUsers: List<String> = emptyList()
 )
 
 @IgnoreExtraProperties
 data class AppSettingsDto(
     @DocumentId val id: String = "main",
-    val appName: String = "FF Tournaments",
+    val appName: String = "eSports Arena",
     val announcementText: String = "🔥 Grand Championship Live! Join Bermuda and Purgatory custom matches.",
     val isMaintenance: Boolean = false,
     val supportContact: String = "WhatsApp: +91 98765 43210 / Discord: @fftourneys",
     val minDeposit: Int = 20,
     val platformFeePercent: Int = 10,
     val rulesAndGuidelines: String = "1. Mobile devices only.\n2. Teaming up in Solo matches is banned.\n3. Room ID & Password released 15m prior to start.",
+    val signUpBonusEnabled: Boolean = true,
+    val signUpBonusMode: String = "FIXED", // "FIXED" or "RANDOM"
+    val signUpBonusFixed: Int = 10,
+    val signUpBonusMin: Int = 5,
+    val signUpBonusMax: Int = 25,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )
+
+@IgnoreExtraProperties
+data class WithdrawalRequestDto(
+    @DocumentId val id: String = "",
+    val userId: String = "",
+    val userName: String = "",
+    val userEmail: String = "",
+    val userFfIgn: String = "",
+    val userFfUid: String = "",
+    val amount: Int = 0,
+    val upiId: String = "",
+    val accountHolderName: String = "",
+    val status: String = "PENDING", // PENDING, APPROVED, REJECTED
+    val adminNote: String = "",
+    val adminRefId: String = "", // UTR or transaction ID from admin
+    val timestamp: Long = System.currentTimeMillis(),
+    val processedAt: Long = 0L
+)
+
+@IgnoreExtraProperties
+data class SupportThreadDto(
+    val userId: String = "",
+    val userName: String = "",
+    val userEmail: String = "",
+    val userFfIgn: String = "",
+    val userFfUid: String = "",
+    val lastMessage: String = "",
+    val lastSenderId: String = "",
+    val lastSenderIsAdmin: Boolean = false,
+    val lastMessageTimestamp: Long = System.currentTimeMillis(),
+    val unreadByAdmin: Int = 0,
+    val unreadByUser: Int = 0,
+    val status: String = "OPEN", // OPEN, RESOLVED
+    val hasImage: Boolean = false,
+    @ServerTimestamp val updatedAt: Timestamp? = null
+)
+
+@IgnoreExtraProperties
+data class SupportMessageDto(
+    val id: String = "",
+    val threadUserId: String = "",
+    val senderId: String = "",
+    val senderName: String = "",
+    val isAdminSender: Boolean = false,
+    val messageText: String = "",
+    val imageBase64: String? = null,
+    val timestamp: Long = System.currentTimeMillis(),
+    @ServerTimestamp val createdAt: Timestamp? = null
+)
+
+fun com.google.firebase.firestore.DocumentSnapshot.toSupportThreadDto(): SupportThreadDto? {
+    if (!exists()) return null
+    return SupportThreadDto(
+        userId = getString("userId")?.takeIf { it.isNotBlank() } ?: id,
+        userName = getString("userName") ?: "",
+        userEmail = getString("userEmail") ?: "",
+        userFfIgn = getString("userFfIgn") ?: "",
+        userFfUid = getString("userFfUid") ?: "",
+        lastMessage = getString("lastMessage") ?: "",
+        lastSenderId = getString("lastSenderId") ?: "",
+        lastSenderIsAdmin = getBoolean("lastSenderIsAdmin") ?: false,
+        lastMessageTimestamp = getLong("lastMessageTimestamp") ?: 0L,
+        unreadByAdmin = getLong("unreadByAdmin")?.toInt() ?: 0,
+        unreadByUser = getLong("unreadByUser")?.toInt() ?: 0,
+        status = getString("status") ?: "OPEN",
+        hasImage = getBoolean("hasImage") ?: false,
+        updatedAt = getTimestamp("updatedAt")
+    )
+}
+
+fun com.google.firebase.firestore.DocumentSnapshot.toSupportMessageDto(): SupportMessageDto? {
+    if (!exists()) return null
+    return SupportMessageDto(
+        id = getString("id")?.takeIf { it.isNotBlank() } ?: id,
+        threadUserId = getString("threadUserId") ?: "",
+        senderId = getString("senderId") ?: "",
+        senderName = getString("senderName") ?: "",
+        isAdminSender = getBoolean("isAdminSender") ?: false,
+        messageText = getString("messageText") ?: "",
+        imageBase64 = getString("imageBase64")?.takeIf { it.isNotBlank() },
+        timestamp = getLong("timestamp") ?: 0L,
+        createdAt = getTimestamp("createdAt")
+    )
+}
+
+
+

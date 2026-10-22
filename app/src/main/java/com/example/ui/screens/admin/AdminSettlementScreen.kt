@@ -58,6 +58,7 @@ import com.example.ui.components.HighContrastCard
 import com.example.ui.theme.FireOrange
 import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastDark
+import com.example.ui.theme.SlateCardBg
 import com.example.ui.theme.SlateLightBg
 import com.example.ui.theme.SlateMutedBorder
 import com.example.ui.theme.SuccessGreen
@@ -110,13 +111,13 @@ fun AdminSettlementScreen(viewModel: AppViewModel) {
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = SlateCardBg)
             )
         },
         bottomBar = {
             if (selectedTourney != null && participants.isNotEmpty() && selectedTourney?.status != "COMPLETED") {
                 Surface(
-                    color = Color.White,
+                    color = SlateCardBg,
                     shadowElevation = 8.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -258,7 +259,7 @@ fun AdminSettlementScreen(viewModel: AppViewModel) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = SlateCardBg),
                             border = BorderStroke(1.dp, SlateMutedBorder)
                         ) {
                             Column(
@@ -288,7 +289,7 @@ fun AdminSettlementScreen(viewModel: AppViewModel) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = SlateCardBg),
                             border = BorderStroke(1.dp, SlateMutedBorder)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {

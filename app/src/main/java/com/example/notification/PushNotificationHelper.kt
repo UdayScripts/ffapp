@@ -79,4 +79,17 @@ object PushNotificationHelper {
             // Non-fatal notification failure
         }
     }
+
+    fun isNotificationDispatched(context: Context, notifId: String): Boolean {
+        val prefs = context.getSharedPreferences("user_notifs_prefs", Context.MODE_PRIVATE)
+        val notified = prefs.getStringSet("notified_notif_ids", emptySet()) ?: emptySet()
+        return notified.contains(notifId)
+    }
+
+    fun markNotificationDispatched(context: Context, notifId: String) {
+        val prefs = context.getSharedPreferences("user_notifs_prefs", Context.MODE_PRIVATE)
+        val notified = (prefs.getStringSet("notified_notif_ids", emptySet()) ?: emptySet()).toMutableSet()
+        notified.add(notifId)
+        prefs.edit().putStringSet("notified_notif_ids", notified).apply()
+    }
 }

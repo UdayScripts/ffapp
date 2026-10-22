@@ -1,6 +1,7 @@
 package com.example.ui.screens.admin
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,17 +19,23 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -38,6 +45,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -45,6 +53,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +66,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,8 +80,10 @@ import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastBorder
 import com.example.ui.theme.HighContrastDark
 import com.example.ui.theme.LiveRed
+import com.example.ui.theme.SlateCardBg
 import com.example.ui.theme.SlateLightBg
 import com.example.ui.theme.SlateMutedBorder
+import com.example.ui.theme.SlateSubtle
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimaryDark
 import com.example.ui.theme.TextSecondaryMuted
@@ -83,28 +99,42 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
 
     var showBroadcastDialog by remember { mutableStateOf(false) }
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var isDeletingAll by remember { mutableStateOf(false) }
 
     val liveCount = tournaments.count { it.status == "LIVE" }
     val totalPrize = tournaments.sumOf { it.prizePool }
 
+    val pendingWithdrawals by viewModel.pendingWithdrawalsCount.collectAsStateWithLifecycle()
+    val unreadSupportChats by viewModel.adminUnreadSupportCount.collectAsStateWithLifecycle()
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = SlateCardBg,
+                shadowElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.app_logo),
+                            contentDescription = "eSports Arena Logo",
+                            contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .size(32.dp)
-                                .background(HighContrastDark, RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LocalFireDepartment,
-                                contentDescription = null,
-                                tint = FireOrange,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
@@ -120,15 +150,14 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                             )
                         }
                     }
-                },
-                actions = {
+
                     // Return to Matches View
                     Surface(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
                             .clickable { viewModel.navigateTo(Screen.Dashboard) }
                             .testTag("switch_to_player_button"),
-                        color = Color(0xFFF1F5F9),
+                        color = SlateSubtle,
                         border = BorderStroke(1.dp, SlateMutedBorder)
                     ) {
                         Row(
@@ -150,10 +179,8 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
-            )
+                }
+            }
         }
     ) { innerPadding ->
         LazyColumn(
@@ -224,6 +251,26 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                         tag = "admin_menu_settlement"
                     )
 
+                    // Manage UPI Withdrawals
+                    AdminActionCard(
+                        title = if (pendingWithdrawals > 0) "UPI Withdrawal Requests ($pendingWithdrawals Pending)" else "UPI Withdrawal Requests",
+                        subtitle = "Review player winning withdrawal requests, accept & mark paid, or reject with instant refund",
+                        icon = Icons.Default.Payments,
+                        accentColor = SuccessGreen,
+                        onClick = { viewModel.navigateTo(Screen.AdminWithdrawals) },
+                        tag = "admin_menu_withdrawals"
+                    )
+
+                    // Live Player Support Chat Inbox (with Photo Support)
+                    AdminActionCard(
+                        title = if (unreadSupportChats > 0) "Live Support Chat Inbox ($unreadSupportChats Unread)" else "Live Support Chat Inbox",
+                        subtitle = "Chat with players in real time, inspect payment/match screenshots, and send photo replies",
+                        icon = Icons.Default.SupportAgent,
+                        accentColor = Color(0xFF0EA5E9),
+                        onClick = { viewModel.navigateTo(Screen.AdminSupportInbox) },
+                        tag = "admin_menu_support_inbox"
+                    )
+
                     // User Management & Balances
                     AdminActionCard(
                         title = "User & Wallet Management",
@@ -263,6 +310,16 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                         onClick = { viewModel.navigateTo(Screen.AdminSettings) },
                         tag = "admin_menu_settings"
                     )
+
+                    // Delete All Platform Data
+                    AdminActionCard(
+                        title = "Delete All Data (Reset All)",
+                        subtitle = "Permanently wipe all users, match history, transactions, withdrawals, tournaments & alerts",
+                        icon = Icons.Default.DeleteForever,
+                        accentColor = LiveRed,
+                        onClick = { showDeleteAllDialog = true },
+                        tag = "admin_menu_delete_all_data"
+                    )
                 }
             }
 
@@ -278,6 +335,51 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
             onBroadcast = { title, msg ->
                 viewModel.broadcastCustomNotification(title, msg)
                 showBroadcastDialog = false
+            }
+        )
+    }
+
+    if (showDeleteAllDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isDeletingAll) showDeleteAllDialog = false },
+            containerColor = SlateCardBg,
+            title = {
+                Text(
+                    text = "Delete All Platform Data?",
+                    fontWeight = FontWeight.Bold,
+                    color = LiveRed
+                )
+            },
+            text = {
+                Text(
+                    text = "This will permanently delete all users, their match & balance history, withdrawal requests, tournaments, and notifications from the database.",
+                    fontSize = 13.sp,
+                    color = TextPrimaryDark
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isDeletingAll = true
+                        viewModel.deleteAllPlatformData { _, _ ->
+                            isDeletingAll = false
+                            showDeleteAllDialog = false
+                        }
+                    },
+                    enabled = !isDeletingAll,
+                    colors = ButtonDefaults.buttonColors(containerColor = LiveRed),
+                    modifier = Modifier.testTag("confirm_delete_all_data_button")
+                ) {
+                    Text(if (isDeletingAll) "Deleting..." else "Delete Everything", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteAllDialog = false },
+                    enabled = !isDeletingAll
+                ) {
+                    Text("Cancel", color = TextSecondaryMuted)
+                }
             }
         )
     }
@@ -309,7 +411,7 @@ fun AdminActionCard(
             .clickable { onClick() }
             .testTag(tag),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = SlateCardBg),
         border = BorderStroke(1.dp, SlateMutedBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
@@ -368,53 +470,213 @@ fun BroadcastNotificationModal(
     var titleInput by remember { mutableStateOf("Tournament Room Update 🚨") }
     var messageInput by remember { mutableStateOf("Match is starting in 15 minutes! Please check Room ID & Password.") }
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text("Broadcast Real-Time Alert", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "This will send an instant in-app banner alert and notification inbox item to all players.",
-                    fontSize = 12.sp,
-                    color = TextSecondaryMuted
-                )
-
-                OutlinedTextField(
-                    value = titleInput,
-                    onValueChange = { titleInput = it },
-                    label = { Text("Alert Title") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("broadcast_title_input")
-                )
-
-                OutlinedTextField(
-                    value = messageInput,
-                    onValueChange = { messageInput = it },
-                    label = { Text("Alert Message") },
-                    maxLines = 3,
-                    modifier = Modifier.fillMaxWidth().testTag("broadcast_msg_input")
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (titleInput.isNotBlank() && messageInput.isNotBlank()) {
-                        onBroadcast(titleInput, messageInput)
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
-                modifier = Modifier.testTag("send_broadcast_button")
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.65f))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .clickable(enabled = false) {}
+                    .clip(RoundedCornerShape(24.dp)),
+                shape = RoundedCornerShape(24.dp),
+                color = SlateCardBg,
+                border = BorderStroke(1.dp, SlateMutedBorder),
+                shadowElevation = 16.dp
             ) {
-                Text("Broadcast Now")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    // Header
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(HighContrastDark, Color(0xFF1E293B))
+                                )
+                            )
+                            .padding(horizontal = 18.dp, vertical = 16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .background(FireOrange.copy(alpha = 0.2f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Campaign,
+                                        contentDescription = null,
+                                        tint = FireOrange,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "Broadcast Live Alert",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = "Dispatches In-App Banner & Push",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF94A3B8)
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Content
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Live In-App Banner Preview
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = HighContrastDark,
+                            border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.6f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Campaign,
+                                            contentDescription = null,
+                                            tint = FireOrange,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = titleInput.ifBlank { "Alert Title" },
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    Surface(
+                                        color = LiveRed,
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "LIVE BANNER",
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = messageInput.ifBlank { "Alert message preview here..." },
+                                    color = Color(0xFFE2E8F0),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = titleInput,
+                            onValueChange = { titleInput = it },
+                            label = { Text("Alert Title") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("broadcast_title_input")
+                        )
+
+                        OutlinedTextField(
+                            value = messageInput,
+                            onValueChange = { messageInput = it },
+                            label = { Text("Alert Message") },
+                            maxLines = 3,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("broadcast_msg_input")
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                            ) {
+                                Text("Cancel", color = TextPrimaryDark)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (titleInput.isNotBlank() && messageInput.isNotBlank()) {
+                                        onBroadcast(titleInput.trim(), messageInput.trim())
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1.5f)
+                                    .height(48.dp)
+                                    .testTag("send_broadcast_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Campaign,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Broadcast", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
             }
         }
-    )
+    }
 }

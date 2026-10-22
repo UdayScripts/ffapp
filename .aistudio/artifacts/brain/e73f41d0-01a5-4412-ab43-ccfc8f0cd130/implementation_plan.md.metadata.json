@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for the Free Fire tournament application featuring an admin management panel, user match & deposit histories, instant simulated top-up wallet, real-time match notification system, and custom application settings in a high-contrast minimalist light aesthetic.",
-  "updatedAt": "2026-10-16T04:26:36.185821329Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Implementation plan for private per-user notification filtering, signup-time cutoff to hide historical notifications, and both Clear All and per-item notification deletion controls.",
+  "updatedAt":  "2026-10-21T05:47:54.991205861Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

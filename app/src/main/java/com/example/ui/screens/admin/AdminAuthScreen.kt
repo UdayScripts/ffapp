@@ -51,6 +51,7 @@ import com.example.ui.theme.FireOrange
 import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastDark
 import com.example.ui.theme.LiveRed
+import com.example.ui.theme.SlateCardBg
 import com.example.ui.theme.SlateLightBg
 import com.example.ui.theme.SlateMutedBorder
 import com.example.ui.theme.SuccessGreen
@@ -91,7 +92,7 @@ fun AdminAuthScreen(viewModel: AppViewModel) {
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = SlateCardBg)
             )
         }
     ) { innerPadding ->
@@ -112,7 +113,7 @@ fun AdminAuthScreen(viewModel: AppViewModel) {
                 modifier = Modifier
                     .size(80.dp)
                     .background(
-                        color = if (isRealAdmin) HighContrastDark else Color(0xFFFEF2F2),
+                        color = if (isRealAdmin) HighContrastDark else LiveRed.copy(alpha = 0.15f),
                         shape = CircleShape
                     ),
                 contentAlignment = Alignment.Center
@@ -143,11 +144,11 @@ fun AdminAuthScreen(viewModel: AppViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isRealAdmin) Color(0xFFF0FDF4) else Color(0xFFFEF2F2)
+                    containerColor = if (isRealAdmin) SuccessGreen.copy(alpha = 0.12f) else LiveRed.copy(alpha = 0.12f)
                 ),
                 border = BorderStroke(
                     1.dp,
-                    if (isRealAdmin) Color(0xFFBBF7D0) else Color(0xFFFECACA)
+                    if (isRealAdmin) SuccessGreen.copy(alpha = 0.4f) else LiveRed.copy(alpha = 0.4f)
                 )
             ) {
                 Column(
@@ -166,7 +167,7 @@ fun AdminAuthScreen(viewModel: AppViewModel) {
                             text = if (isRealAdmin) "Master Admin Authenticated" else "Account Not Authorized",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
-                            color = if (isRealAdmin) Color(0xFF166534) else Color(0xFF991B1B)
+                            color = if (isRealAdmin) SuccessGreen else LiveRed
                         )
                     }
 
@@ -179,7 +180,7 @@ fun AdminAuthScreen(viewModel: AppViewModel) {
                             "Current account ($activeEmail) does not possess organizer privileges. Only the verified master email 'udaynath381@gmail.com' is allowed."
                         },
                         fontSize = 12.sp,
-                        color = if (isRealAdmin) Color(0xFF14532D) else Color(0xFF7F1D1D),
+                        color = TextPrimaryDark,
                         textAlign = TextAlign.Center,
                         lineHeight = 18.sp
                     )

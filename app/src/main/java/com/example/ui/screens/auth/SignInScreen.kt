@@ -3,6 +3,7 @@ package com.example.ui.screens.auth
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,8 +13,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -42,11 +45,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -56,7 +63,9 @@ import com.example.auth.AuthManager
 import com.example.ui.theme.FireOrange
 import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastDark
+import com.example.ui.theme.SlateCardBg
 import com.example.ui.theme.SlateLightBg
+import com.example.ui.theme.SlateMutedBorder
 import com.example.ui.theme.TextPrimaryDark
 import com.example.ui.theme.TextSecondaryMuted
 import com.google.firebase.auth.FirebaseUser
@@ -86,6 +95,8 @@ fun SignInScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(SlateLightBg)
+            .statusBarsPadding()
+            .navigationBarsPadding()
     ) {
         Column(
             modifier = Modifier
@@ -97,30 +108,20 @@ fun SignInScreen(
         ) {
             Spacer(modifier = Modifier.height(20.dp))
 
-            // App Emblem / Badge
-            Box(
+            // App Emblem / Custom eSports Arena Logo
+            Image(
+                painter = painterResource(id = R.drawable.app_logo),
+                contentDescription = "eSports Arena Logo",
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(88.dp)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(FireOrange, HighContrastDark)
-                        ),
-                        shape = RoundedCornerShape(22.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.SportsEsports,
-                    contentDescription = "Esports Crest",
-                    tint = Color.White,
-                    modifier = Modifier.size(52.dp)
-                )
-            }
+                    .size(104.dp)
+                    .clip(RoundedCornerShape(24.dp))
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "FREE FIRE ESPORTS",
+                text = "OFFICIAL TOURNAMENT PLATFORM",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 2.sp,
@@ -128,7 +129,7 @@ fun SignInScreen(
             )
 
             Text(
-                text = "Tournament Arena",
+                text = "eSports Arena",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Black,
                 color = TextPrimaryDark
@@ -149,8 +150,8 @@ fun SignInScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                colors = CardDefaults.cardColors(containerColor = SlateCardBg),
+                border = BorderStroke(1.dp, SlateMutedBorder),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(
@@ -276,7 +277,7 @@ fun SignInScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Trust badge
+            // Trust badge (No Firebase/Firestore word)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
@@ -284,18 +285,53 @@ fun SignInScreen(
                 Icon(
                     imageVector = Icons.Default.Shield,
                     contentDescription = null,
-                    tint = Color(0xFF64748B),
+                    tint = TextSecondaryMuted,
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Zero-trust secured with Google Identity & Cloud Firestore",
+                    text = "Zero-trust secured with Google Identity & Cloud Sync",
                     fontSize = 11.sp,
-                    color = Color(0xFF64748B)
+                    color = TextSecondaryMuted
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // UdayScripts Branding Footer at Bottom
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = SlateCardBg),
+                border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.45f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SportsEsports,
+                        contentDescription = null,
+                        tint = FireOrange,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Powered by ",
+                        fontSize = 11.sp,
+                        color = TextSecondaryMuted
+                    )
+                    Text(
+                        text = "UdayScripts",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        color = FireOrange,
+                        letterSpacing = 0.6.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -313,7 +349,7 @@ private fun FeatureRow(
         Box(
             modifier = Modifier
                 .size(38.dp)
-                .background(Color(0xFFFFF7ED), RoundedCornerShape(10.dp)),
+                .background(FireOrange.copy(alpha = 0.14f), RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(

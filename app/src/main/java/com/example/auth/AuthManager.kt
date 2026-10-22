@@ -108,7 +108,7 @@ object AuthManager {
                     val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
                     val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
                     val authResult = FirebaseAuth.getInstance().signInWithCredential(authCredential).await()
-                    authResult.user?.let(onAuthSuccess) ?: onAuthError("Firebase sign in failed: empty user")
+                    authResult.user?.let(onAuthSuccess) ?: onAuthError("Sign in failed: empty user")
                 } else {
                     onAuthError("Unexpected credential type: ${credential::class.java.simpleName}")
                 }
