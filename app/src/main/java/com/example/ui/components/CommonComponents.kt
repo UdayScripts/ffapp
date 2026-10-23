@@ -23,25 +23,42 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.example.ui.theme.SlateCardBg
+import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -354,6 +371,15 @@ fun RealTimeNotificationBanner(
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+
+    // Automatically hide toast notification banner after 3 seconds
+    LaunchedEffect(alert) {
+        if (alert != null) {
+            delay(3000L)
+            currentOnDismiss()
+        }
+    }
 
     AnimatedVisibility(
         visible = alert != null,
@@ -365,7 +391,6 @@ fun RealTimeNotificationBanner(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(12.dp))
                     .clickable {
                         if (alert.id.isNotBlank()) {
                             onMarkAsRead?.invoke(alert.id)
@@ -373,6 +398,7 @@ fun RealTimeNotificationBanner(
                         onDismiss()
                     }
                     .testTag("notification_banner"),
+                shape = RoundedCornerShape(12.dp),
                 color = HighContrastDark,
                 shadowElevation = 8.dp,
                 border = BorderStroke(1.5.dp, FireOrange)
@@ -502,3 +528,4 @@ fun RealTimeNotificationBanner(
         }
     }
 }
+

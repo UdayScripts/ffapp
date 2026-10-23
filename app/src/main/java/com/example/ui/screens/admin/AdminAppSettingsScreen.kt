@@ -11,11 +11,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -561,12 +564,13 @@ fun AdminAppSettingsScreen(viewModel: AppViewModel) {
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
                 shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .heightIn(min = 50.dp)
                     .testTag("save_settings_button")
             ) {
-                Text("Save Platform Settings", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("Save Platform Settings", fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
             }
 
             // Danger Zone: Delete All Data
@@ -596,21 +600,24 @@ fun AdminAppSettingsScreen(viewModel: AppViewModel) {
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(1.dp, LiveRed),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = LiveRed),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 46.dp)
                             .testTag("settings_delete_all_data_button")
                     ) {
                         Icon(imageVector = Icons.Default.DeleteForever, contentDescription = null)
                         Text(
                             text = "  Delete All Users & Platform Data",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
+                            fontSize = 13.sp,
+                            maxLines = 1
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.navigationBarsPadding().height(48.dp))
         }
     }
 

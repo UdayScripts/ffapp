@@ -25,7 +25,11 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        ('email' in request.auth.token && request.auth.token.email == 'udaynath381@gmail.com') ||
+        ('email' in request.auth.token && (
+          request.auth.token.email == 'udaynath381@gmail.com' ||
+          request.auth.token.email == 'uday@esportsarena.app'
+        )) ||
+        request.auth.uid == 'admin_uday_master' ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -59,6 +63,8 @@ service cloud.firestore {
     function isValidUserProfile(data) {
       return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
              (!('username' in data) || (data.username is string && data.username.size() <= 100)) &&
+             (!('usernameLower' in data) || (data.usernameLower is string && data.usernameLower.size() <= 100)) &&
+             (!('passwordHash' in data) || (data.passwordHash is string && data.passwordHash.size() <= 256)) &&
              (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
              (!('email' in data) || (data.email is string && data.email.size() <= 100)) &&
              (!('ffIgn' in data) || (data.ffIgn is string && data.ffIgn.size() <= 50)) &&
@@ -75,6 +81,7 @@ service cloud.firestore {
              (!('totalKills' in data) || data.totalKills is number) &&
              (!('totalWinnings' in data) || data.totalWinnings is number) &&
              (!('bonusClaimed' in data) || data.bonusClaimed is bool) &&
+             (!('savedUpiId' in data) || (data.savedUpiId is string && data.savedUpiId.size() <= 100)) &&
              (!('signupTimestamp' in data) || data.signupTimestamp is number) &&
              (!('createdAt' in data) || data.createdAt == null || data.createdAt is timestamp) &&
              (!('updatedAt' in data) || data.updatedAt == null || data.updatedAt is timestamp);
@@ -130,7 +137,9 @@ service cloud.firestore {
              (!('supportContact' in data) || (data.supportContact is string && data.supportContact.size() <= 100)) &&
              (!('minDeposit' in data) || data.minDeposit is number) &&
              (!('platformFeePercent' in data) || data.platformFeePercent is number) &&
-             (!('rulesAndGuidelines' in data) || (data.rulesAndGuidelines is string && data.rulesAndGuidelines.size() <= 2000));
+             (!('rulesAndGuidelines' in data) || (data.rulesAndGuidelines is string && data.rulesAndGuidelines.size() <= 2000)) &&
+             (!('latestAppVersion' in data) || (data.latestAppVersion is string && data.latestAppVersion.size() <= 30)) &&
+             (!('updateReleaseNotes' in data) || (data.updateReleaseNotes is string && data.updateReleaseNotes.size() <= 2000));
     }
 
     function isValidSupportThread(data) {
@@ -163,116 +172,86 @@ service cloud.firestore {
     }
 
     match /tournaments/{tournamentId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin() && isValidTournament(incoming());
-      allow delete: if isAdmin();
-      allow update: if isSignedIn() && isValidTournament(incoming()) && (
-        isAdmin() ||
-        incoming().diff(existing()).affectedKeys().hasOnly(['joinedSlots'])
-      );
+      allow get, list: if true;
+      allow create, update: if isValidId(tournamentId) && isValidTournament(incoming());
+      allow delete: if isValidId(tournamentId);
 
       match /participants/{participantId} {
-        allow get, list: if isSignedIn();
-        allow create, update: if isSignedIn() && isValidParticipant(incoming());
-        allow delete: if isSignedIn();
+        allow get, list: if true;
+        allow create, update: if isValidParticipant(incoming());
+        allow delete: if true;
       }
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
-      allow list: if isSignedIn() && (isAdmin() || resource.data.id == request.auth.uid || resource.data.userId == request.auth.uid);
-      allow create, update: if isSignedIn() && isValidId(userId) && isValidUserProfile(incoming()) && (request.auth.uid == userId || isAdmin());
-      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow get, list: if true;
+      allow create, update: if isValidId(userId) && isValidUserProfile(incoming());
+      allow delete: if isValidId(userId);
 
       match /transactions/{transactionId} {
-        allow get, list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-        allow create, update: if isSignedIn() && isValidTransaction(incoming()) && (request.auth.uid == userId || isAdmin());
-        allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow get, list: if true;
+        allow create, update: if isValidTransaction(incoming());
+        allow delete: if true;
       }
 
       match /participations/{participantId} {
-        allow get, list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-        allow create, update: if isSignedIn() && isValidParticipant(incoming()) && (request.auth.uid == userId || isAdmin());
-        allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow get, list: if true;
+        allow create, update: if isValidParticipant(incoming());
+        allow delete: if true;
       }
     }
 
     match /participants/{participantId} {
-      allow get, list: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidParticipant(incoming());
-      allow delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update: if isValidParticipant(incoming());
+      allow delete: if true;
     }
 
     match /transactions/{transactionId} {
-      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidTransaction(incoming()) && (incoming().userId == request.auth.uid || isAdmin());
-      allow update, delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update: if isValidTransaction(incoming());
+      allow delete: if true;
     }
 
     match /notifications/{notificationId} {
-      allow get, list: if isSignedIn();
-      allow create: if (isAdmin() || isSignedIn()) && isValidNotification(incoming());
-      allow update: if isAdmin() || isSignedIn();
-      allow delete: if isAdmin() || isSignedIn();
+      allow get, list: if true;
+      allow create, update: if isValidNotification(incoming());
+      allow delete: if true;
     }
 
     match /bonus_claims/{userId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
+      allow get, list: if true;
+      allow create: if isValidId(userId);
       allow update, delete: if false; // Cryptographically immutable
     }
 
     match /device_bonus_claims/{deviceId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
+      allow get, list: if true;
+      allow create: if isValidId(deviceId);
       allow update, delete: if false; // Cryptographically immutable
     }
 
     match /app_settings/{settingId} {
-      allow get, list: if isSignedIn();
-      allow create, update: if (isAdmin() || isSignedIn()) && isValidAppSettings(incoming());
-      allow delete: if isAdmin() || isSignedIn();
+      allow get, list: if true;
+      allow create, update: if isValidAppSettings(incoming());
+      allow delete: if true;
     }
 
     match /withdrawals/{withdrawalId} {
-      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin());
-      allow update, delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update: if isValidId(withdrawalId);
+      allow delete: if isValidId(withdrawalId);
     }
 
     match /support_chats/{userId} {
-      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() &&
-                       isValidId(userId) &&
-                       (request.auth.uid == userId || isAdmin()) &&
-                       incoming().userId == userId &&
-                       isValidSupportThread(incoming());
-      allow update: if isSignedIn() &&
-                       isValidId(userId) &&
-                       isValidSupportThread(incoming()) &&
-                       (request.auth.uid == userId || isAdmin()) &&
-                       incoming().userId == existing().userId;
-      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow get, list: if true;
+      allow create, update: if isValidId(userId) && incoming().userId == userId && isValidSupportThread(incoming());
+      allow delete: if isValidId(userId);
 
       match /messages/{messageId} {
-        allow get: if isSignedIn() && isValidId(userId) && isValidId(messageId) && (request.auth.uid == userId || isAdmin());
-        allow list: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
-        allow create: if isSignedIn() &&
-                         isValidId(userId) &&
-                         isValidId(messageId) &&
-                         (request.auth.uid == userId || isAdmin()) &&
-                         incoming().threadUserId == userId &&
-                         incoming().senderId == request.auth.uid &&
-                         isValidSupportMessage(incoming());
-        allow update: if isSignedIn() &&
-                         isValidId(userId) &&
-                         isValidId(messageId) &&
-                         isValidSupportMessage(incoming()) &&
-                         (request.auth.uid == userId || isAdmin()) &&
-                         incoming().threadUserId == existing().threadUserId &&
-                         incoming().senderId == existing().senderId;
-        allow delete: if isSignedIn() && isValidId(userId) && isValidId(messageId) && (request.auth.uid == userId || isAdmin());
+        allow get, list: if true;
+        allow create, update: if isValidId(userId) && isValidId(messageId) && incoming().threadUserId == userId && isValidSupportMessage(incoming());
+        allow delete: if isValidId(userId) && isValidId(messageId);
       }
     }
 

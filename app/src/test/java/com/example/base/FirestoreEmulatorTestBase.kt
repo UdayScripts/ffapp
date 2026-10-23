@@ -9,11 +9,14 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.MemoryCacheSettings
+import java.net.InetSocketAddress
+import java.net.Socket
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -29,20 +32,33 @@ abstract class FirestoreEmulatorTestBase {
   protected lateinit var auth: FirebaseAuth
   protected lateinit var databaseId: String
 
+  private fun isPortOpen(host: String, port: Int): Boolean {
+    return try {
+      Socket().use { socket ->
+        socket.connect(InetSocketAddress(host, port), 300)
+        true
+      }
+    } catch (_: Exception) {
+      false
+    }
+  }
+
   @Before
   open fun setUpFirebase() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
     databaseId = if (resId != 0) context.getString(resId) else "demo-database"
 
-    val app = if (FirebaseApp.getApps(context).isEmpty()) {
+    val existingEmulatorApp = FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
+    val app = existingEmulatorApp ?: run {
       val newApp = FirebaseApp.initializeApp(
         context,
         FirebaseOptions.Builder()
           .setApplicationId("com.example.app")
           .setProjectId(PROJECT_ID)
           .setApiKey("fake-api-key-for-emulator")
-          .build()
+          .build(),
+        EMULATOR_APP_NAME
       )
       val newFirestore = FirebaseFirestore.getInstance(newApp, databaseId)
       newFirestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
@@ -53,8 +69,6 @@ abstract class FirestoreEmulatorTestBase {
       val newAuth = FirebaseAuth.getInstance(newApp)
       newAuth.useEmulator(EMULATOR_HOST, AUTH_PORT)
       newApp
-    } else {
-      FirebaseApp.getInstance()
     }
 
     firestore = FirebaseFirestore.getInstance(app, databaseId)
@@ -63,10 +77,16 @@ abstract class FirestoreEmulatorTestBase {
 
   @After
   open fun tearDownFirebase() {
-    auth.signOut()
+    if (::auth.isInitialized) {
+      auth.signOut()
+    }
   }
 
   protected suspend fun signInTestUser(email: String): String = withContext(Dispatchers.IO) {
+    assumeTrue(
+      "Firebase Auth/Firestore Emulator is not running on $EMULATOR_HOST:$AUTH_PORT",
+      isPortOpen(EMULATOR_HOST, AUTH_PORT) && isPortOpen(EMULATOR_HOST, FIRESTORE_PORT)
+    )
     withTimeout(AUTH_TIMEOUT_MS) {
       val result = try {
         auth.signInWithEmailAndPassword(email, DEFAULT_PASSWORD).await()
@@ -78,6 +98,7 @@ abstract class FirestoreEmulatorTestBase {
   }
 
   private companion object {
+    const val EMULATOR_APP_NAME = "firestore-emulator-test-app"
     const val EMULATOR_HOST = "127.0.0.1"
     const val FIRESTORE_PORT = 8085
     const val AUTH_PORT = 9099

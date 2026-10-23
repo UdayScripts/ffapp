@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -64,6 +65,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -88,6 +90,7 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
     val users by viewModel.allUsers.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
     var userToAdjust by remember { mutableStateOf<UserDto?>(null) }
+    var userToEditGamingId by remember { mutableStateOf<UserDto?>(null) }
     var userToDelete by remember { mutableStateOf<UserDto?>(null) }
     var showDeleteAllUsersDialog by remember { mutableStateOf(false) }
 
@@ -95,7 +98,8 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
         it.username.contains(searchQuery, ignoreCase = true) ||
         it.ffIgn.contains(searchQuery, ignoreCase = true) ||
         it.ffUid.contains(searchQuery, ignoreCase = true) ||
-        it.email.contains(searchQuery, ignoreCase = true)
+        it.email.contains(searchQuery, ignoreCase = true) ||
+        it.id.contains(searchQuery, ignoreCase = true)
     }
 
     Scaffold(
@@ -177,10 +181,11 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
                 )
             }
 
-            items(filteredUsers) { u ->
+            items(filteredUsers, key = { it.id.ifBlank { it.username } }) { u ->
                 UserDetailItemCard(
                     user = u,
                     onAdjustBalance = { userToAdjust = u },
+                    onEditGamingId = { userToEditGamingId = u },
                     onToggleSuspend = { viewModel.toggleUserSuspension(u.id) },
                     onDeleteUser = { userToDelete = u }
                 )
@@ -254,6 +259,65 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteAllUsersDialog = false }) {
+                    Text("Cancel", color = TextSecondaryMuted)
+                }
+            }
+        )
+    }
+
+    userToEditGamingId?.let { u ->
+        var ignInput by remember(u.id) { mutableStateOf(u.ffIgn) }
+        var uidInput by remember(u.id) { mutableStateOf(u.ffUid) }
+
+        AlertDialog(
+            onDismissRequest = { userToEditGamingId = null },
+            containerColor = SlateCardBg,
+            title = {
+                Text(
+                    text = "Update Free Fire ID (${u.username.ifBlank { "Player" }})",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = TextPrimaryDark
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = ignInput,
+                        onValueChange = { ignInput = it },
+                        label = { Text("Free Fire IGN") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_edit_ign_input")
+                    )
+                    OutlinedTextField(
+                        value = uidInput,
+                        onValueChange = { uidInput = it.filter { c -> !c.isWhitespace() } },
+                        label = { Text("Free Fire UID") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_edit_uid_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.adminUpdateUserGamingProfile(u.id, ignInput.trim(), uidInput.trim())
+                        userToEditGamingId = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
+                    modifier = Modifier.testTag("admin_confirm_edit_gaming_id_button")
+                ) {
+                    Text("Save ID", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { userToEditGamingId = null }) {
                     Text("Cancel", color = TextSecondaryMuted)
                 }
             }
@@ -562,11 +626,20 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
 fun UserDetailItemCard(
     user: UserDto,
     onAdjustBalance: () -> Unit,
+    onEditGamingId: () -> Unit,
     onToggleSuspend: () -> Unit,
     onDeleteUser: () -> Unit
 ) {
+    val displayUsername = user.username.ifBlank {
+        user.email.substringBefore("@").ifBlank { user.id.ifBlank { "Player" } }
+    }
+    val displayIgn = user.ffIgn.ifBlank { "Not Set" }
+    val displayUid = user.ffUid.ifBlank { "---" }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("admin_user_card_${user.id}"),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = SlateCardBg),
         border = BorderStroke(1.dp, SlateMutedBorder)
@@ -577,7 +650,12 @@ fun UserDetailItemCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 10.dp)
+                ) {
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -585,22 +663,26 @@ fun UserDetailItemCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = user.username.take(1).uppercase(),
+                            text = displayUsername.take(1).uppercase(),
                             color = if (user.isAdmin) FireOrange else TextPrimaryDark,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            fontSize = 15.sp,
+                            maxLines = 1
                         )
                     }
 
                     Spacer(modifier = Modifier.width(10.dp))
 
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = user.username,
+                                text = displayUsername,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
-                                color = TextPrimaryDark
+                                color = TextPrimaryDark,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             if (user.isAdmin) {
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -613,32 +695,52 @@ fun UserDetailItemCard(
                                         color = FireOrangeDark,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                     )
                                 }
                             }
                         }
                         Text(
-                            text = "IGN: ${user.ffIgn}  •  UID: ${user.ffUid}",
+                            text = "IGN: $displayIgn  •  UID: $displayUid",
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
-                            color = TextSecondaryMuted
+                            color = TextSecondaryMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                // Balance Pill
+                // Balance Pill (Fixed width/non-wrapping so balance is always clearly visible)
                 Surface(
-                    color = SuccessGreen.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(8.dp)
+                    color = SuccessGreen.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.4f))
                 ) {
-                    Text(
-                        text = "₹${user.walletBalance}",
-                        color = SuccessGreen,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = "BALANCE",
+                            color = SuccessGreen,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 8.sp,
+                            letterSpacing = 0.5.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Text(
+                            text = "₹${user.walletBalance}",
+                            color = SuccessGreen,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
 
@@ -649,17 +751,20 @@ fun UserDetailItemCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(SlateSubtle, RoundedCornerShape(8.dp))
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceAround
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Played: ${user.matchesPlayed}", fontSize = 11.sp, color = TextSecondaryMuted)
-                Text("Kills: ${user.totalKills}", fontSize = 11.sp, color = TextSecondaryMuted)
-                Text("Won: ₹${user.totalWinnings}", fontSize = 11.sp, color = TrophyGold, fontWeight = FontWeight.Bold)
+                Text("Played: ${user.matchesPlayed}", fontSize = 11.sp, color = TextSecondaryMuted, maxLines = 1, softWrap = false)
+                Text("Kills: ${user.totalKills}", fontSize = 11.sp, color = TextSecondaryMuted, maxLines = 1, softWrap = false)
+                Text("Won: ₹${user.totalWinnings}", fontSize = 11.sp, color = TrophyGold, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                 Text(
                     text = if (user.isSuspended) "SUSPENDED" else "ACTIVE",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (user.isSuspended) LiveRed else SuccessGreen
+                    color = if (user.isSuspended) LiveRed else SuccessGreen,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
 
@@ -668,24 +773,65 @@ fun UserDetailItemCard(
             // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedButton(
                     onClick = onAdjustBalance,
                     shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(imageVector = Icons.Default.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(14.dp), tint = FireOrange)
+                    Icon(
+                        imageVector = Icons.Default.AccountBalanceWallet,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = FireOrange
+                    )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Balance", fontSize = 12.sp, color = TextPrimaryDark)
+                    Text(
+                        text = "Balance",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimaryDark,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onEditGamingId,
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("edit_user_gaming_id_button_${user.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = FireOrange
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Edit ID",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimaryDark,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
 
                 OutlinedButton(
                     onClick = onToggleSuspend,
                     shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = if (user.isSuspended) SuccessGreen else LiveRed
-                    )
+                    ),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         imageVector = if (user.isSuspended) Icons.Default.CheckCircle else Icons.Default.Block,
@@ -693,19 +839,26 @@ fun UserDetailItemCard(
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (user.isSuspended) "Activate" else "Suspend", fontSize = 12.sp)
+                    Text(
+                        text = if (user.isSuspended) "Activate" else "Suspend",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
 
                 OutlinedButton(
                     onClick = onDeleteUser,
                     shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = LiveRed),
                     modifier = Modifier.testTag("delete_user_button_${user.id}")
                 ) {
                     Icon(
                         imageVector = Icons.Default.DeleteForever,
                         contentDescription = "Delete User",
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }

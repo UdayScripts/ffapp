@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,23 +37,37 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.BookmarkAdded
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CurrencyRupee
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
+import com.example.R
+import com.example.data.payment.DepositReceiptData
+import com.example.data.payment.DepositReceiptManager
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -70,6 +85,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -114,6 +130,7 @@ import com.example.ui.theme.SlateSubtle
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimaryDark
 import com.example.ui.theme.TextSecondaryMuted
+import com.example.ui.theme.ThemePreferenceState
 import com.example.ui.theme.TrophyGold
 import com.example.viewmodel.AppViewModel
 import kotlinx.coroutines.launch
@@ -613,10 +630,85 @@ fun WalletScreen(viewModel: AppViewModel) {
                         }
                     } else {
                         items(filteredList) { txn ->
-                            TransactionItemCard(txn)
+                            TransactionItemCard(
+                                txn = txn,
+                                userName = currentUser?.username ?: "Player",
+                                userEmail = currentUser?.email ?: ""
+                            )
                         }
                     }
                 } else {
+                    val savedUpi = currentUser?.savedUpiId.orEmpty()
+                    if (savedUpi.isNotBlank()) {
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = SlateCardBg,
+                                border = BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.45f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("saved_upi_summary_card")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .background(SuccessGreen.copy(alpha = 0.15f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.BookmarkAdded,
+                                                contentDescription = null,
+                                                tint = SuccessGreen,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "SAVED WITHDRAWAL UPI",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = SuccessGreen
+                                            )
+                                            Text(
+                                                text = savedUpi,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = TextPrimaryDark,
+                                                fontFamily = FontFamily.Monospace,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    TextButton(
+                                        onClick = { showWithdrawDialog = true },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.testTag("withdraw_with_saved_upi_button")
+                                    ) {
+                                        Text(
+                                            text = "Withdraw Now",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = SuccessGreen
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (userWithdrawals.isEmpty()) {
                         item {
                             Card(
@@ -672,6 +764,8 @@ fun WalletScreen(viewModel: AppViewModel) {
         DepositModalDialog(
             currentBalance = currentUser?.walletBalance ?: 0,
             initialAmount = depositInitialAmount,
+            userName = currentUser?.username ?: "Player",
+            userEmail = currentUser?.email ?: "",
             onDismiss = { showDepositDialog = false },
             onVerifyPayment = { orderId, amount ->
                 viewModel.checkAndVerifyPaytmDeposit(orderId, amount)
@@ -685,9 +779,10 @@ fun WalletScreen(viewModel: AppViewModel) {
             withdrawableWinnings = withdrawableWinnings,
             totalBalance = currentUser?.walletBalance ?: 0,
             defaultName = currentUser?.username ?: "",
+            savedUpiId = currentUser?.savedUpiId ?: "",
             onDismiss = { showWithdrawDialog = false },
-            onSubmitWithdrawal = { amount, upiId, holderName, onResult ->
-                viewModel.requestWithdrawal(amount, upiId, holderName) { success, msg ->
+            onSubmitWithdrawal = { amount, upiId, holderName, saveUpi, onResult ->
+                viewModel.requestWithdrawal(amount, upiId, holderName, saveUpiId = saveUpi) { success, msg ->
                     onResult(success, msg)
                     if (success) {
                         selectedLedgerTab = 1 // Switch to Withdrawals tab so user immediately tracks status
@@ -699,7 +794,16 @@ fun WalletScreen(viewModel: AppViewModel) {
 }
 
 @Composable
-fun TransactionItemCard(txn: TransactionDto) {
+fun TransactionItemCard(
+    txn: TransactionDto,
+    userName: String = "Player",
+    userEmail: String = ""
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isDownloadingReceipt by remember { mutableStateOf(false) }
+    var receiptDownloaded by remember { mutableStateOf(false) }
+
     val isPositive = txn.amount > 0
     val dateFormat = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
     val formattedDate = dateFormat.format(Date(txn.timestamp))
@@ -720,82 +824,204 @@ fun TransactionItemCard(txn: TransactionDto) {
         colors = CardDefaults.cardColors(containerColor = SlateCardBg),
         border = BorderStroke(1.dp, SlateMutedBorder)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(14.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Surface(
-                        color = badgeBg,
-                        shape = RoundedCornerShape(4.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
+                        Surface(
+                            color = badgeBg,
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = typeLabel,
+                                color = badgeColor,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = typeLabel,
-                            color = badgeColor,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = "Ref: ${txn.referenceId}",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = TextSecondaryMuted,
                             maxLines = 1,
-                            softWrap = false,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
                     Text(
-                        text = "Ref: ${txn.referenceId}",
+                        text = txn.description,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimaryDark,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Text(
+                        text = formattedDate,
                         fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
                         color = TextSecondaryMuted,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
-                Text(
-                    text = txn.description,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimaryDark,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Text(
-                    text = formattedDate,
-                    fontSize = 11.sp,
-                    color = TextSecondaryMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "${if (isPositive) "+" else ""}₹${txn.amount}",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isPositive) SuccessGreen else Color(0xFFEF4444),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Text(
+                        text = "Bal: ₹${txn.balanceAfter}",
+                        fontSize = 11.sp,
+                        color = TextSecondaryMuted,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.width(10.dp))
+            // Official Receipt Action for Deposit transactions
+            if (txn.type == "DEPOSIT") {
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = SlateMutedBorder, thickness = 0.5.dp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ReceiptLong,
+                            contentDescription = null,
+                            tint = SuccessGreen,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = if (receiptDownloaded) "Receipt saved" else "Official Payment Receipt",
+                            fontSize = 11.sp,
+                            color = if (receiptDownloaded) SuccessGreen else TextSecondaryMuted,
+                            fontWeight = if (receiptDownloaded) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
 
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "${if (isPositive) "+" else ""}₹${txn.amount}",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Black,
-                    color = if (isPositive) SuccessGreen else Color(0xFFEF4444),
-                    maxLines = 1,
-                    softWrap = false
-                )
-                Text(
-                    text = "Bal: ₹${txn.balanceAfter}",
-                    fontSize = 11.sp,
-                    color = TextSecondaryMuted,
-                    maxLines = 1,
-                    softWrap = false
-                )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    val receiptData = DepositReceiptData(
+                                        orderId = txn.referenceId,
+                                        txnId = txn.referenceId,
+                                        amount = txn.amount,
+                                        updatedBalance = txn.balanceAfter,
+                                        paymentMethod = "Paytm UPI Gateway",
+                                        userName = userName,
+                                        userEmail = userEmail,
+                                        timestamp = txn.timestamp
+                                    )
+                                    DepositReceiptManager.shareReceipt(context, receiptData)
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier
+                                .height(30.dp)
+                                .testTag("share_txn_receipt_${txn.referenceId}"),
+                            border = BorderStroke(1.dp, SlateMutedBorder),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share",
+                                tint = TextPrimaryDark,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Share",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimaryDark
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                if (isDownloadingReceipt) return@Button
+                                coroutineScope.launch {
+                                    isDownloadingReceipt = true
+                                    val receiptData = DepositReceiptData(
+                                        orderId = txn.referenceId,
+                                        txnId = txn.referenceId,
+                                        amount = txn.amount,
+                                        updatedBalance = txn.balanceAfter,
+                                        paymentMethod = "Paytm UPI Gateway",
+                                        userName = userName,
+                                        userEmail = userEmail,
+                                        timestamp = txn.timestamp
+                                    )
+                                    val uri = DepositReceiptManager.saveReceiptToDevice(context, receiptData).getOrNull()
+                                    isDownloadingReceipt = false
+                                    if (uri != null) {
+                                        receiptDownloaded = true
+                                        Toast.makeText(context, "Receipt saved to Downloads / Pictures folder!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Could not save receipt", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier
+                                .height(30.dp)
+                                .testTag("download_txn_receipt_${txn.referenceId}"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (receiptDownloaded) SuccessGreen else HighContrastDark,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (receiptDownloaded) Icons.Default.Check else Icons.Default.Download,
+                                contentDescription = "Download Receipt",
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (receiptDownloaded) "Saved" else "Receipt",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -812,6 +1038,8 @@ enum class DepositFlowStep {
 fun DepositModalDialog(
     currentBalance: Int = 0,
     initialAmount: Int = 100,
+    userName: String = "Player",
+    userEmail: String = "",
     onDismiss: () -> Unit,
     onVerifyPayment: suspend (orderId: String, amount: Int) -> PaytmTxnStatus
 ) {
@@ -826,6 +1054,9 @@ fun DepositModalDialog(
     var currentQrCodeUrl by remember { mutableStateOf("") }
 
     var isVerifying by remember { mutableStateOf(false) }
+    var isDownloadingQr by remember { mutableStateOf(false) }
+    var isDownloadingReceipt by remember { mutableStateOf(false) }
+    var receiptDownloaded by remember { mutableStateOf(false) }
     var verificationStatusMessage by remember { mutableStateOf<String?>(null) }
     var isStatusError by remember { mutableStateOf(false) }
 
@@ -833,6 +1064,15 @@ fun DepositModalDialog(
     var confirmedTxnId by remember { mutableStateOf("") }
     var confirmedAmount by remember { mutableStateOf(0) }
     var confirmedBankTxnId by remember { mutableStateOf<String?>(null) }
+
+    // Celebratory Lottie Animation for Deposit Success
+    val lottieComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.deposit_success))
+    val lottieProgress by animateLottieCompositionAsState(
+        composition = lottieComposition,
+        iterations = LottieConstants.IterateForever,
+        isPlaying = currentStep == DepositFlowStep.VERIFIED_SUCCESS,
+        speed = 1.05f
+    )
 
     val quickAmounts = listOf(50, 100, 200, 500, 1000)
 
@@ -881,41 +1121,43 @@ fun DepositModalDialog(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.70f))
+                .background(Color.Black.copy(alpha = 0.72f))
                 .systemBarsPadding()
+                .imePadding()
+                .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 52.dp)
                 .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.BottomCenter
+            contentAlignment = Alignment.Center
         ) {
             val isCompactDialog = maxWidth < 360.dp
             val contentHorizontalPadding = if (isCompactDialog) 14.dp else 18.dp
-            val qrContainerSize = (maxWidth * 0.40f).coerceIn(120.dp, 155.dp)
+            val qrContainerSize = (maxWidth * 0.38f).coerceIn(115.dp, 148.dp)
+            val sheetMaxHeight = maxHeight * 0.84f
 
             androidx.compose.animation.AnimatedVisibility(
                 visible = sheetVisible,
                 enter = androidx.compose.animation.slideInVertically(
-                    initialOffsetY = { it },
+                    initialOffsetY = { it / 2 },
                     animationSpec = androidx.compose.animation.core.spring(
                         dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
                         stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
                     )
                 ) + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it / 2 }) + androidx.compose.animation.fadeOut()
             ) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = maxHeight - 16.dp)
-                    .clickable(enabled = false) {}
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    .heightIn(max = sheetMaxHeight)
+                    .clickable(enabled = false) {},
+                shape = RoundedCornerShape(24.dp),
                 color = SlateCardBg,
-                border = BorderStroke(1.dp, SlateMutedBorder),
-                shadowElevation = 20.dp
+                border = BorderStroke(1.5.dp, FireOrange.copy(alpha = 0.6f)),
+                shadowElevation = 24.dp
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = maxHeight - 16.dp)
+                        .heightIn(max = sheetMaxHeight)
                 ) {
                     when (currentStep) {
                         DepositFlowStep.SELECT_AMOUNT -> {
@@ -1294,7 +1536,10 @@ fun DepositModalDialog(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = contentHorizontalPadding, vertical = 12.dp),
+                                        .padding(
+                                            horizontal = contentHorizontalPadding,
+                                            vertical = 14.dp
+                                        ),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -1472,7 +1717,7 @@ fun DepositModalDialog(
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             modifier = Modifier
-                                                .background(Color(0xFFE2E8F0), RoundedCornerShape(6.dp))
+                                                .background(if (ThemePreferenceState.isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0), RoundedCornerShape(6.dp))
                                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                                                 .clickable {
                                                     clipboardManager.setText(AnnotatedString(currentOrderId))
@@ -1484,7 +1729,7 @@ fun DepositModalDialog(
                                                 fontFamily = FontFamily.Monospace,
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = TextPrimaryDark,
+                                                color = if (ThemePreferenceState.isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A),
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier.weight(1f, fill = false)
@@ -1493,72 +1738,8 @@ fun DepositModalDialog(
                                             Icon(
                                                 imageVector = Icons.Default.ContentCopy,
                                                 contentDescription = "Copy",
-                                                tint = Color(0xFF475569),
+                                                tint = if (ThemePreferenceState.isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569),
                                                 modifier = Modifier.size(12.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Paytm VPA / UPI ID Card
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFFFF7ED),
-                                    border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.4f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "UPI VPA (TAP TO COPY)",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = FireOrangeDark,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = PaytmPaymentService.DEFAULT_UPI_VPA,
-                                                fontSize = if (isCompactDialog) 11.sp else 12.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TextPrimaryDark,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.width(8.dp))
-
-                                        Button(
-                                            onClick = {
-                                                clipboardManager.setText(AnnotatedString(PaytmPaymentService.DEFAULT_UPI_VPA))
-                                                Toast.makeText(context, "Copied UPI ID!", Toast.LENGTH_SHORT).show()
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
-                                            shape = RoundedCornerShape(6.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                            modifier = Modifier.heightIn(min = 32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ContentCopy,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Copy",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                maxLines = 1,
-                                                softWrap = false
                                             )
                                         }
                                     }
@@ -1607,10 +1788,113 @@ fun DepositModalDialog(
                                             text = "GPay • PhonePe • Paytm • BHIM",
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = TextSecondaryMuted,
+                                            color = Color(0xFF475569),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                    }
+                                }
+
+                                // Download QR Code Option (replaces showing UPI ID)
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (ThemePreferenceState.isDarkMode) Color(0xFF0F172A) else Color(0xFFFFF7ED),
+                                    border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "SAVE QR TO GALLERY",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = FireOrangeDark,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "Download QR & scan from any UPI app",
+                                                fontSize = if (isCompactDialog) 11.sp else 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (ThemePreferenceState.isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        Button(
+                                            onClick = {
+                                                if (!isDownloadingQr) {
+                                                    coroutineScope.launch {
+                                                        isDownloadingQr = true
+                                                        val result = PaytmPaymentService.downloadQrCodeToGallery(
+                                                            context = context,
+                                                            qrCodeUrl = currentQrCodeUrl,
+                                                            orderId = currentOrderId,
+                                                            amount = parsedAmount
+                                                        )
+                                                        isDownloadingQr = false
+                                                        result.onSuccess { msg ->
+                                                            isStatusError = false
+                                                            verificationStatusMessage = "✅ $msg"
+                                                            Toast.makeText(context, "QR Code downloaded to Gallery!", Toast.LENGTH_SHORT).show()
+                                                        }.onFailure { err ->
+                                                            isStatusError = true
+                                                            verificationStatusMessage = "Could not save QR: ${err.message ?: "Try again"}"
+                                                            Toast.makeText(context, "Failed to download QR", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            enabled = !isDownloadingQr,
+                                            colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                            modifier = Modifier
+                                                .heightIn(min = 36.dp)
+                                                .testTag("download_qr_button")
+                                        ) {
+                                            if (isDownloadingQr) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(12.dp),
+                                                    color = Color.White,
+                                                    strokeWidth = 1.8.dp
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Saving...",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Default.Download,
+                                                    contentDescription = "Download QR",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Download QR",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
@@ -1633,7 +1917,7 @@ fun DepositModalDialog(
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = "Scan QR with UPI app, pay ₹$parsedAmount, then tap Verify Payment Status below.",
+                                            text = "Download or scan the QR code in your UPI app, pay ₹$parsedAmount, then tap Verify Payment Status below.",
                                             fontSize = 10.sp,
                                             color = Color(0xFF475569),
                                             lineHeight = 14.sp,
@@ -1653,7 +1937,10 @@ fun DepositModalDialog(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = contentHorizontalPadding, vertical = 10.dp),
+                                        .padding(
+                                            horizontal = contentHorizontalPadding,
+                                            vertical = 14.dp
+                                        ),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     // Status / Error feedback message
@@ -1735,18 +2022,34 @@ fun DepositModalDialog(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
+                                // Lottie Celebration Animation for Deposit Success
                                 Box(
                                     modifier = Modifier
-                                        .size(60.dp)
-                                        .background(SuccessGreen.copy(alpha = 0.15f), CircleShape),
+                                        .size(if (isCompactDialog) 120.dp else 140.dp)
+                                        .testTag("deposit_success_lottie_container"),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = "Success",
-                                        tint = SuccessGreen,
-                                        modifier = Modifier.size(36.dp)
-                                    )
+                                    if (lottieComposition != null) {
+                                        LottieAnimation(
+                                            composition = lottieComposition,
+                                            progress = { lottieProgress },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(60.dp)
+                                                .background(SuccessGreen.copy(alpha = 0.15f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Success",
+                                                tint = SuccessGreen,
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                        }
+                                    }
                                 }
 
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1854,10 +2157,10 @@ fun DepositModalDialog(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Payment VPA", fontSize = 11.sp, color = TextSecondaryMuted)
+                                            Text("Payment Method", fontSize = 11.sp, color = TextSecondaryMuted)
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text(
-                                                text = PaytmPaymentService.DEFAULT_UPI_VPA,
+                                                text = "Paytm QR Code",
                                                 fontSize = 11.sp,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
@@ -1885,6 +2188,166 @@ fun DepositModalDialog(
                                         }
                                     }
                                 }
+
+                                // Receipt Actions: Download & Share Receipt Card
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = SlateCardBg,
+                                    border = BorderStroke(1.dp, SlateMutedBorder),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ReceiptLong,
+                                                contentDescription = null,
+                                                tint = FireOrange,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "Official Deposit Receipt",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimaryDark
+                                            )
+                                            if (receiptDownloaded) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                                Surface(
+                                                    color = SuccessGreen.copy(alpha = 0.15f),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "Saved ✓",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = SuccessGreen,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Text(
+                                            text = "Download a signed payment voucher receipt to your device Downloads storage or share with your records.",
+                                            fontSize = 11.sp,
+                                            color = TextSecondaryMuted,
+                                            lineHeight = 15.sp
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    if (isDownloadingReceipt) return@Button
+                                                    coroutineScope.launch {
+                                                        isDownloadingReceipt = true
+                                                        val receiptData = DepositReceiptData(
+                                                            orderId = currentOrderId,
+                                                            txnId = confirmedTxnId,
+                                                            bankTxnId = confirmedBankTxnId,
+                                                            amount = confirmedAmount,
+                                                            updatedBalance = currentBalance + confirmedAmount,
+                                                            paymentMethod = "Paytm QR & UPI Gateway",
+                                                            userName = userName,
+                                                            userEmail = userEmail
+                                                        )
+                                                        val uri = DepositReceiptManager.saveReceiptToDevice(context, receiptData).getOrNull()
+                                                        isDownloadingReceipt = false
+                                                        if (uri != null) {
+                                                            receiptDownloaded = true
+                                                            Toast.makeText(context, "Receipt saved to Downloads / Pictures folder!", Toast.LENGTH_LONG).show()
+                                                        } else {
+                                                            Toast.makeText(context, "Unable to save receipt. Please try sharing instead.", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (receiptDownloaded) SuccessGreen else HighContrastDark,
+                                                    contentColor = Color.White
+                                                ),
+                                                shape = RoundedCornerShape(10.dp),
+                                                enabled = !isDownloadingReceipt,
+                                                modifier = Modifier
+                                                    .weight(1.2f)
+                                                    .heightIn(min = 44.dp)
+                                                    .testTag("download_deposit_receipt_button")
+                                            ) {
+                                                if (isDownloadingReceipt) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(16.dp),
+                                                        strokeWidth = 2.dp,
+                                                        color = Color.White
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Saving...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                } else {
+                                                    Icon(
+                                                        imageVector = if (receiptDownloaded) Icons.Default.Check else Icons.Default.Download,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = if (receiptDownloaded) "Downloaded" else "Download Receipt",
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    coroutineScope.launch {
+                                                        val receiptData = DepositReceiptData(
+                                                            orderId = currentOrderId,
+                                                            txnId = confirmedTxnId,
+                                                            bankTxnId = confirmedBankTxnId,
+                                                            amount = confirmedAmount,
+                                                            updatedBalance = currentBalance + confirmedAmount,
+                                                            paymentMethod = "Paytm QR & UPI Gateway",
+                                                            userName = userName,
+                                                            userEmail = userEmail
+                                                        )
+                                                        DepositReceiptManager.shareReceipt(context, receiptData)
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                border = BorderStroke(1.dp, SlateMutedBorder),
+                                                modifier = Modifier
+                                                    .weight(0.8f)
+                                                    .heightIn(min = 44.dp)
+                                                    .testTag("share_deposit_receipt_button")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Share,
+                                                    contentDescription = "Share Receipt",
+                                                    tint = TextPrimaryDark,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Share",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TextPrimaryDark,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             // Done Button (Pinned at Bottom)
@@ -1896,7 +2359,10 @@ fun DepositModalDialog(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = contentHorizontalPadding, vertical = 12.dp)
+                                        .padding(
+                                            horizontal = contentHorizontalPadding,
+                                            vertical = 14.dp
+                                        )
                                 ) {
                                     Button(
                                         onClick = onDismiss,
@@ -2047,11 +2513,13 @@ fun UpiWithdrawalModalDialog(
     withdrawableWinnings: Int,
     totalBalance: Int,
     defaultName: String,
+    savedUpiId: String = "",
     onDismiss: () -> Unit,
-    onSubmitWithdrawal: (amount: Int, upiId: String, holderName: String, onResult: (Boolean, String) -> Unit) -> Unit
+    onSubmitWithdrawal: (amount: Int, upiId: String, holderName: String, saveUpi: Boolean, onResult: (Boolean, String) -> Unit) -> Unit
 ) {
     var amountInput by remember { mutableStateOf(if (withdrawableWinnings >= 50) "50" else if (withdrawableWinnings >= 20) "$withdrawableWinnings" else "") }
-    var upiIdInput by remember { mutableStateOf("") }
+    var upiIdInput by remember { mutableStateOf(savedUpiId.ifBlank { "" }) }
+    var saveUpiForFuture by remember { mutableStateOf(true) }
     var holderNameInput by remember { mutableStateOf(defaultName) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
@@ -2068,36 +2536,43 @@ fun UpiWithdrawalModalDialog(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.70f))
+                .background(Color.Black.copy(alpha = 0.72f))
                 .systemBarsPadding()
+                .imePadding()
+                .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 52.dp)
                 .clickable(enabled = !isSubmitting, onClick = onDismiss),
-            contentAlignment = Alignment.BottomCenter
+            contentAlignment = Alignment.Center
         ) {
             val isCompactDialog = maxWidth < 360.dp
             val contentHorizontalPadding = if (isCompactDialog) 14.dp else 18.dp
+            val sheetMaxHeight = maxHeight * 0.84f
 
             androidx.compose.animation.AnimatedVisibility(
                 visible = sheetVisible,
                 enter = androidx.compose.animation.slideInVertically(
-                    initialOffsetY = { it },
+                    initialOffsetY = { it / 2 },
                     animationSpec = androidx.compose.animation.core.spring(
                         dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
                         stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
                     )
                 ) + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it / 2 }) + androidx.compose.animation.fadeOut()
             ) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = false) {}
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    .heightIn(max = sheetMaxHeight)
+                    .clickable(enabled = false) {},
+                shape = RoundedCornerShape(24.dp),
                 color = SlateCardBg,
-                border = BorderStroke(1.dp, SlateMutedBorder),
-                shadowElevation = 20.dp
+                border = BorderStroke(1.5.dp, SuccessGreen.copy(alpha = 0.6f)),
+                shadowElevation = 24.dp
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = sheetMaxHeight)
+                ) {
                     // Header with Drag Handle
                     Column(
                         modifier = Modifier
@@ -2173,9 +2648,10 @@ fun UpiWithdrawalModalDialog(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .weight(1f, fill = false)
                             .verticalScroll(rememberScrollState())
-                            .padding(horizontal = contentHorizontalPadding, vertical = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(horizontal = contentHorizontalPadding, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         // Balance Breakdown Banner
                         Surface(
@@ -2280,6 +2756,95 @@ fun UpiWithdrawalModalDialog(
                             }
                         }
 
+                        // Saved UPI Quick-Fill Card (if user has a saved UPI ID)
+                        if (savedUpiId.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = SuccessGreen.copy(alpha = 0.12f),
+                                border = BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.45f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("saved_upi_badge")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .background(SuccessGreen.copy(alpha = 0.2f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.BookmarkAdded,
+                                                contentDescription = null,
+                                                tint = SuccessGreen,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "SAVED UPI ID",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = SuccessGreen
+                                            )
+                                            Text(
+                                                text = savedUpiId,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = TextPrimaryDark,
+                                                fontFamily = FontFamily.Monospace,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    if (upiIdInput.trim() != savedUpiId.trim()) {
+                                        TextButton(
+                                            onClick = {
+                                                upiIdInput = savedUpiId
+                                                errorMessage = null
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                            modifier = Modifier.testTag("use_saved_upi_button")
+                                        ) {
+                                            Text(
+                                                text = "Use Saved",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = SuccessGreen
+                                            )
+                                        }
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = SuccessGreen.copy(alpha = 0.25f),
+                                            modifier = Modifier.testTag("saved_upi_active_chip")
+                                        ) {
+                                            Text(
+                                                text = "✓ Auto-filled",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = SuccessGreen,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // UPI ID Field
                         OutlinedTextField(
                             value = upiIdInput,
@@ -2289,15 +2854,78 @@ fun UpiWithdrawalModalDialog(
                             },
                             label = { Text("Your UPI ID") },
                             placeholder = { Text("e.g. yourname@okaxis or 9876543210@paytm") },
+                            trailingIcon = {
+                                if (savedUpiId.isNotBlank() && upiIdInput.trim() == savedUpiId.trim()) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = "Saved UPI active",
+                                        tint = SuccessGreen,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            },
                             singleLine = true,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("withdraw_upi_id_input"),
                             colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = TextPrimaryDark,
+                                unfocusedTextColor = TextPrimaryDark,
                                 focusedBorderColor = SuccessGreen,
-                                unfocusedBorderColor = SlateMutedBorder
+                                unfocusedBorderColor = SlateMutedBorder,
+                                focusedLabelColor = SuccessGreen,
+                                unfocusedLabelColor = TextSecondaryMuted,
+                                focusedPlaceholderColor = TextSecondaryMuted,
+                                unfocusedPlaceholderColor = TextSecondaryMuted
                             )
                         )
+
+                        // Save UPI ID for future withdrawals toggle
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = SlateSubtle.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, SlateMutedBorder.copy(alpha = 0.6f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { saveUpiForFuture = !saveUpiForFuture }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = saveUpiForFuture,
+                                    onCheckedChange = { saveUpiForFuture = it },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = SuccessGreen,
+                                        checkmarkColor = Color.White,
+                                        uncheckedColor = SlateMutedBorder
+                                    ),
+                                    modifier = Modifier.testTag("save_upi_checkbox")
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Save UPI ID for future withdrawals",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimaryDark
+                                    )
+                                    Text(
+                                        text = if (savedUpiId.isNotBlank() && upiIdInput.trim() != savedUpiId.trim() && upiIdInput.isNotBlank()) {
+                                            "Will update your saved UPI to this new address"
+                                        } else {
+                                            "Auto-fills next time for 1-tap instant payouts"
+                                        },
+                                        fontSize = 10.sp,
+                                        color = TextSecondaryMuted
+                                    )
+                                }
+                            }
+                        }
 
                         // Account Holder Name Field
                         OutlinedTextField(
@@ -2313,8 +2941,14 @@ fun UpiWithdrawalModalDialog(
                                 .fillMaxWidth()
                                 .testTag("withdraw_holder_name_input"),
                             colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = TextPrimaryDark,
+                                unfocusedTextColor = TextPrimaryDark,
                                 focusedBorderColor = SuccessGreen,
-                                unfocusedBorderColor = SlateMutedBorder
+                                unfocusedBorderColor = SlateMutedBorder,
+                                focusedLabelColor = SuccessGreen,
+                                unfocusedLabelColor = TextSecondaryMuted,
+                                focusedPlaceholderColor = TextSecondaryMuted,
+                                unfocusedPlaceholderColor = TextSecondaryMuted
                             )
                         )
 
@@ -2333,73 +2967,94 @@ fun UpiWithdrawalModalDialog(
                                 )
                             }
                         }
+                    }
 
-                        Button(
-                            onClick = {
-                                when {
-                                    withdrawableWinnings < 20 -> {
-                                        errorMessage = "You need at least ₹20 in withdrawable tournament winnings to request a payout."
-                                    }
-                                    parsedAmount < 20 -> {
-                                        errorMessage = "Minimum withdrawal amount is ₹20."
-                                    }
-                                    parsedAmount > withdrawableWinnings -> {
-                                        errorMessage = "You can only withdraw from your winning balance (Max: ₹$withdrawableWinnings)."
-                                    }
-                                    !upiIdInput.trim().contains("@") || upiIdInput.trim().length < 5 -> {
-                                        errorMessage = "Please enter a valid UPI ID (e.g., player@upi)."
-                                    }
-                                    holderNameInput.trim().isBlank() -> {
-                                        errorMessage = "Please enter the account holder name."
-                                    }
-                                    else -> {
-                                        isSubmitting = true
-                                        errorMessage = null
-                                        onSubmitWithdrawal(
-                                            parsedAmount,
-                                            upiIdInput.trim(),
-                                            holderNameInput.trim()
-                                        ) { success, msg ->
-                                            isSubmitting = false
-                                            if (success) {
-                                                onDismiss()
-                                            } else {
-                                                errorMessage = msg
+                    // Pinned Bottom Action Bar for UPI Withdrawal Button (Always 100% visible)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = SlateCardBg,
+                        border = BorderStroke(1.dp, SlateMutedBorder),
+                        shadowElevation = 12.dp
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    horizontal = contentHorizontalPadding,
+                                    vertical = 14.dp
+                                )
+                        ) {
+                            Button(
+                                onClick = {
+                                    when {
+                                        withdrawableWinnings < 20 -> {
+                                            errorMessage = "You need at least ₹20 in withdrawable tournament winnings to request a payout."
+                                        }
+                                        parsedAmount < 20 -> {
+                                            errorMessage = "Minimum withdrawal amount is ₹20."
+                                        }
+                                        parsedAmount > withdrawableWinnings -> {
+                                            errorMessage = "You can only withdraw from your winning balance (Max: ₹$withdrawableWinnings)."
+                                        }
+                                        !upiIdInput.trim().contains("@") || upiIdInput.trim().length < 5 -> {
+                                            errorMessage = "Please enter a valid UPI ID (e.g., player@upi)."
+                                        }
+                                        holderNameInput.trim().isBlank() -> {
+                                            errorMessage = "Please enter the account holder name."
+                                        }
+                                        else -> {
+                                            isSubmitting = true
+                                            errorMessage = null
+                                            onSubmitWithdrawal(
+                                                parsedAmount,
+                                                upiIdInput.trim(),
+                                                holderNameInput.trim(),
+                                                saveUpiForFuture
+                                            ) { success, msg ->
+                                                isSubmitting = false
+                                                if (success) {
+                                                    onDismiss()
+                                                } else {
+                                                    errorMessage = msg
+                                                }
                                             }
                                         }
                                     }
+                                },
+                                enabled = !isSubmitting,
+                                colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .testTag("submit_withdrawal_button")
+                            ) {
+                                if (isSubmitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Submitting Request...", color = Color.White, fontWeight = FontWeight.Bold)
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Payments,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Request UPI Withdrawal • ₹${if (parsedAmount > 0) parsedAmount else 0}",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                            },
-                            enabled = !isSubmitting,
-                            colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .testTag("submit_withdrawal_button")
-                        ) {
-                            if (isSubmitting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Submitting Request...", color = Color.White, fontWeight = FontWeight.Bold)
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Payments,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Request UPI Withdrawal • ₹${if (parsedAmount > 0) parsedAmount else 0}",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
                             }
                         }
                     }

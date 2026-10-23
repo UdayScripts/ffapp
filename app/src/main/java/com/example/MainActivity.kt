@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.notification.PushNotificationHelper
 import com.example.ui.components.RealTimeNotificationBanner
+import com.example.ui.components.TournamentRegistrationSuccessDialog
 import com.example.ui.screens.admin.AdminAppSettingsScreen
 import com.example.ui.screens.admin.AdminAuthScreen
 import com.example.ui.screens.admin.AdminDashboardScreen
@@ -133,7 +134,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RootAppGate(viewModel: AppViewModel) {
-    var currentUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
+    val currentUserId by viewModel.currentUserId.collectAsStateWithLifecycle()
     var showStartupSplash by remember { mutableStateOf(true) }
 
     // Request POST_NOTIFICATIONS on Android 13+
@@ -151,7 +152,6 @@ fun RootAppGate(viewModel: AppViewModel) {
 
     DisposableEffect(Unit) {
         val listener = FirebaseAuth.AuthStateListener { auth ->
-            currentUser = auth.currentUser
             auth.currentUser?.let { user ->
                 viewModel.onUserAuthenticated(user)
             }
@@ -163,11 +163,11 @@ fun RootAppGate(viewModel: AppViewModel) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (currentUser == null) {
+        if (currentUserId.isBlank()) {
             SignInScreen(
-                onAuthSuccess = { user ->
-                    currentUser = user
-                    viewModel.onUserAuthenticated(user, isExplicitSignIn = true)
+                viewModel = viewModel,
+                onAuthSuccess = { session ->
+                    viewModel.onSessionAuthenticated(session, isExplicitSignIn = true)
                 }
             )
         } else {
@@ -275,6 +275,7 @@ fun RootAppGate(viewModel: AppViewModel) {
 fun MainAppContent(viewModel: AppViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
     val unreadNotifs by viewModel.unreadNotifCount.collectAsStateWithLifecycle()
+    val registrationSuccessEvent by viewModel.registrationSuccessEvent.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var currentLiveAlert by remember { mutableStateOf<UiNotificationAlert?>(null) }
@@ -286,10 +287,14 @@ fun MainAppContent(viewModel: AppViewModel) {
         }
     }
 
-    // Collect Real-time notification banners
+    // Collect Real-time notification banners and automatically hide after 3 seconds
     LaunchedEffect(Unit) {
         viewModel.liveAlert.collectLatest { alert ->
             currentLiveAlert = alert
+            delay(3000L)
+            if (currentLiveAlert == alert) {
+                currentLiveAlert = null
+            }
         }
     }
 
@@ -470,6 +475,16 @@ fun MainAppContent(viewModel: AppViewModel) {
                     }
                 )
             }
+
+            // Lottie-Based Tournament Registration Success Celebration Modal
+            TournamentRegistrationSuccessDialog(
+                event = registrationSuccessEvent,
+                onDismiss = { viewModel.dismissRegistrationSuccess() },
+                onEnterLobby = { joinedTournamentId ->
+                    viewModel.dismissRegistrationSuccess()
+                    viewModel.openTournamentLobby(joinedTournamentId)
+                }
+            )
         }
     }
 }

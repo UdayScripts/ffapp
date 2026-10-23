@@ -34,40 +34,47 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
         FirebaseFirestore.getInstance(
             context.applicationContext.getString(R.string.firestore_database_id)
         )
-    )
+    ) {
+        com.example.auth.AuthManager.loadSavedSession(context.applicationContext)
+    }
 
     private val auth: FirebaseAuth get() = FirebaseAuth.getInstance()
     private val wipeMutex = Mutex()
 
+    private fun isSessionActive(): Boolean {
+        return auth.currentUser != null || com.example.auth.AuthManager.currentSession() != null
+    }
+
     fun currentAuthUser() = auth.currentUser
 
     // 1. Observe Tournaments from Cloud Firestore in Real-Time (Strictly real database data)
-    fun observeTournaments(): Flow<List<TournamentDto>> =
-        db.collection("tournaments")
+    fun observeTournaments(): Flow<List<TournamentDto>> {
+        return db.collection("tournaments")
             .orderBy("timestamp", Query.Direction.DESCENDING)
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    val t = doc.toObject(TournamentDto::class.java)?.copy(id = doc.id)
+                    val t = doc.toSafeTournamentDto()
                     if (t != null && !isDemoTournament(doc.id, t.title)) t else null
                 }
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "tournaments")
                 }
                 emit(emptyList())
             }
+    }
 
     fun observeTournament(id: String): Flow<TournamentDto?> {
-        if (id.isBlank()) return flowOf<TournamentDto?>(null)
+        if (id.isBlank() || id.startsWith("DEMO-")) return flowOf<TournamentDto?>(null)
         return db.collection("tournaments").document(id)
             .snapshots()
             .map { doc ->
-                if (doc.exists()) doc.toObject(TournamentDto::class.java)?.copy(id = doc.id) else null
+                doc.toSafeTournamentDto()
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.GET, "tournaments/$id")
                 }
                 emit(null)
@@ -76,16 +83,18 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
 
     // 2. Observe Participants for a tournament
     fun observeParticipants(tournamentId: String): Flow<List<ParticipantDto>> {
-        if (tournamentId.isBlank()) return flowOf<List<ParticipantDto>>(emptyList())
+        if (tournamentId.isBlank() || tournamentId.startsWith("DEMO-")) {
+            return flowOf<List<ParticipantDto>>(emptyList())
+        }
         return db.collection("tournaments").document(tournamentId).collection("participants")
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(ParticipantDto::class.java)?.copy(id = doc.id)
+                    doc.toSafeParticipantDto()
                 }.sortedWith(compareBy({ if (it.placement > 0) it.placement else 999 }, { -it.kills }))
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "tournaments/$tournamentId/participants")
                 }
                 emit(emptyList())
@@ -93,16 +102,17 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
     }
 
     fun observeUserParticipations(userId: String): Flow<List<ParticipantDto>> =
-        if (userId.isBlank()) flowOf<List<ParticipantDto>>(emptyList())
-        else db.collection("users").document(userId).collection("participations")
+        if (userId.isBlank() || userId.startsWith("demo_")) {
+            flowOf<List<ParticipantDto>>(emptyList())
+        } else db.collection("users").document(userId).collection("participations")
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(ParticipantDto::class.java)?.copy(id = doc.id)
+                    doc.toSafeParticipantDto()
                 }.sortedByDescending { it.joinedAt }
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "users/$userId/participations")
                 }
                 emit(emptyList())
@@ -110,49 +120,56 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
 
     // 3. Observe User Profile in Real-Time
     fun observeUser(userId: String): Flow<UserDto?> {
-        if (userId.isBlank()) return flowOf<UserDto?>(null)
+        if (userId.isBlank() || userId.startsWith("demo_")) return flowOf<UserDto?>(null)
         return db.collection("users").document(userId)
             .snapshots()
             .map { doc ->
-                if (doc.exists()) doc.toObject(UserDto::class.java)?.copy(id = doc.id) else null
+                doc.toSafeUserDto()
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.GET, "users/$userId")
                 }
                 emit(null)
             }
     }
 
-    fun observeAllUsers(): Flow<List<UserDto>> =
-        db.collection("users")
+    fun observeAllUsers(): Flow<List<UserDto>> {
+        return db.collection("users")
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    val u = doc.toObject(UserDto::class.java)?.copy(id = doc.id)
+                    val u = doc.toSafeUserDto()
                     if (u != null && !isDemoUser(doc.id, u.email)) u else null
-                }
+                }.sortedWith(
+                    compareByDescending<UserDto> { it.isAdmin }
+                        .thenByDescending { it.signupTimestamp }
+                        .thenBy { it.username.lowercase() }
+                )
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "users")
                 }
                 emit(emptyList())
             }
+    }
 
     // 4. Observe User Transactions in Real-Time
     fun observeTransactions(userId: String): Flow<List<TransactionDto>> {
-        if (userId.isBlank()) return flowOf<List<TransactionDto>>(emptyList())
+        if (userId.isBlank() || userId.startsWith("demo_")) {
+            return flowOf<List<TransactionDto>>(emptyList())
+        }
         return db.collection("users").document(userId).collection("transactions")
             .orderBy("timestamp", Query.Direction.DESCENDING)
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(TransactionDto::class.java)?.copy(id = doc.id)
+                    doc.toSafeTransactionDto()
                 }
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "users/$userId/transactions")
                 }
                 emit(emptyList())
@@ -160,35 +177,37 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
     }
 
     // 5. Observe Notifications in Real-Time
-    fun observeNotifications(): Flow<List<NotificationDto>> =
-        db.collection("notifications")
+    fun observeNotifications(): Flow<List<NotificationDto>> {
+        return db.collection("notifications")
             .orderBy("timestamp", Query.Direction.DESCENDING)
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(NotificationDto::class.java)?.copy(id = doc.id)
+                    doc.toSafeNotificationDto()
                 }
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "notifications")
                 }
                 emit(emptyList())
             }
+    }
 
     // 6. Observe Application Settings in Real-Time
-    fun observeAppSettings(): Flow<AppSettingsDto?> =
-        db.collection("app_settings").document("main")
+    fun observeAppSettings(): Flow<AppSettingsDto?> {
+        return db.collection("app_settings").document("main")
             .snapshots()
             .map { doc ->
-                if (doc.exists()) doc.toObject(AppSettingsDto::class.java)?.copy(id = doc.id) else null
+                doc.toSafeAppSettingsDto()
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.GET, "app_settings/main")
                 }
                 emit(null)
             }
+    }
 
     // Update User Free Fire Gaming Profile (IGN & UID)
     suspend fun updateUserGamingProfile(
@@ -198,14 +217,23 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
     ): Result<String> = withContext(Dispatchers.IO) {
         if (userId.isBlank()) return@withContext Result.failure(Exception("User ID is missing"))
         try {
+            val cleanIgn = ffIgn.trim()
+            val cleanUid = ffUid.trim()
             val authUser = auth.currentUser?.takeIf { it.uid == userId }
-            val email = authUser?.email ?: ""
-            val username = authUser?.displayName?.ifBlank { email.substringBefore("@") } ?: "Player"
-            val isAdmin = email.equals("udaynath381@gmail.com", ignoreCase = true)
+            val activeSession = com.example.auth.AuthManager.currentSession()?.takeIf { it.uid == userId }
+            val email = authUser?.email ?: activeSession?.email ?: ""
+            val username = authUser?.displayName?.ifBlank { activeSession?.username ?: email.substringBefore("@") }
+                ?: activeSession?.username
+                ?: "Player"
+            val isAdmin = com.example.auth.AuthManager.isMasterAdminIdentity(email = email, username = username, uid = userId) ||
+                (activeSession?.isAdmin == true)
             val updates = mutableMapOf<String, Any>(
                 "id" to userId,
-                "ffIgn" to ffIgn.trim(),
-                "ffUid" to ffUid.trim()
+                "userId" to userId,
+                "ffIgn" to cleanIgn,
+                "ffUid" to cleanUid,
+                "inGameName" to cleanIgn,
+                "inGameId" to cleanUid
             )
             if (email.isNotBlank()) {
                 updates["email"] = email
@@ -215,15 +243,40 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
             val snap = userDocRef.get().await()
             if (!snap.exists()) {
                 updates["username"] = username
+                updates["usernameLower"] = com.example.auth.AuthManager.normalizeUsernameKey(username)
                 updates["walletBalance"] = 0
                 updates["winningBalance"] = 0
                 updates["totalWithdrawn"] = 0
                 updates["matchesPlayed"] = 0
                 updates["totalKills"] = 0
                 updates["totalWinnings"] = 0
+                updates["isSuspended"] = false
+                updates["bonusClaimed"] = true
                 updates["signupTimestamp"] = System.currentTimeMillis()
+            } else {
+                val existingUsername = snap.getString("username") ?: ""
+                if (existingUsername.isBlank() && username.isNotBlank()) {
+                    updates["username"] = username
+                    updates["usernameLower"] = com.example.auth.AuthManager.normalizeUsernameKey(username)
+                }
             }
             userDocRef.set(updates, SetOptions.merge()).await()
+
+            // Also sync open support chat metadata if it exists
+            try {
+                val supportRef = db.collection("support_chats").document(userId)
+                val supportSnap = supportRef.get().await()
+                if (supportSnap.exists()) {
+                    supportRef.set(
+                        mapOf(
+                            "userFfIgn" to cleanIgn,
+                            "userFfUid" to cleanUid
+                        ),
+                        SetOptions.merge()
+                    ).await()
+                }
+            } catch (_: Exception) {}
+
             Result.success("Free Fire gaming profile updated!")
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.UPDATE, "users/$userId")
@@ -249,7 +302,8 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
             val tourneySnap = tourneyDocRef.get().await()
 
             if (!tourneySnap.exists()) return@withContext Result.failure(Exception("Tournament not found"))
-            val tournament = tourneySnap.toObject(TournamentDto::class.java)!!
+            val tournament = tourneySnap.toSafeTournamentDto()
+                ?: return@withContext Result.failure(Exception("Invalid tournament data"))
 
             if (tournament.status != "UPCOMING") {
                 return@withContext Result.failure(Exception("Registration closed for this match"))
@@ -359,7 +413,7 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                     "id" to userId,
                     "username" to username,
                     "email" to email,
-                    "isAdmin" to email.equals("udaynath381@gmail.com", ignoreCase = true),
+                    "isAdmin" to com.example.auth.AuthManager.isMasterAdminIdentity(email = email, username = username, uid = userId),
                     "walletBalance" to newBalance
                 ),
                 SetOptions.merge()
@@ -428,7 +482,7 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                     "id" to userId,
                     "username" to username,
                     "email" to email,
-                    "isAdmin" to email.equals("udaynath381@gmail.com", ignoreCase = true),
+                    "isAdmin" to com.example.auth.AuthManager.isMasterAdminIdentity(email = email, username = username, uid = userId),
                     "walletBalance" to newBalance
                 ),
                 SetOptions.merge()
@@ -702,17 +756,17 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
 
     // Observe User Withdrawal Requests
     fun observeUserWithdrawals(userId: String): Flow<List<WithdrawalRequestDto>> {
-        if (userId.isBlank()) return flowOf(emptyList())
+        if (userId.isBlank() || userId.startsWith("demo_")) return flowOf(emptyList())
         return db.collection("withdrawals")
             .whereEqualTo("userId", userId)
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(WithdrawalRequestDto::class.java)?.copy(id = doc.id)
+                    doc.toSafeWithdrawalRequestDto()
                 }.sortedByDescending { it.timestamp }
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "withdrawals/user/$userId")
                 }
                 emit(emptyList())
@@ -725,11 +779,11 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(WithdrawalRequestDto::class.java)?.copy(id = doc.id)
+                    doc.toSafeWithdrawalRequestDto()
                 }.sortedByDescending { it.timestamp }
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "withdrawals")
                 }
                 emit(emptyList())
@@ -741,7 +795,8 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
         userId: String,
         amount: Int,
         upiId: String,
-        accountHolderName: String
+        accountHolderName: String,
+        saveUpiId: Boolean = true
     ): Result<WithdrawalRequestDto> = withContext(Dispatchers.IO) {
         if (userId.isBlank()) return@withContext Result.failure(Exception("Authentication required"))
         if (amount < 20) return@withContext Result.failure(Exception("Minimum withdrawal amount is ₹20"))
@@ -793,11 +848,16 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                 val newWinBal = (effectiveWinnings - amount).coerceAtLeast(0)
                 val newTotalWithdrawn = totalWithdrawn + amount
 
-                transaction.update(userDocRef, mapOf(
+                val updates = mutableMapOf<String, Any>(
                     "walletBalance" to newBal,
                     "winningBalance" to newWinBal,
                     "totalWithdrawn" to newTotalWithdrawn
-                ))
+                )
+                if (saveUpiId && trimmedUpi.isNotBlank()) {
+                    updates["savedUpiId"] = trimmedUpi
+                }
+
+                transaction.update(userDocRef, updates)
 
                 val userName = userSnap.getString("username") ?: "Player"
                 val userEmail = userSnap.getString("email") ?: ""
@@ -1019,6 +1079,24 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
         }
     }
 
+    // Save or update user's UPI ID for withdrawals
+    suspend fun saveUserUpiId(userId: String, upiId: String): Result<String> = withContext(Dispatchers.IO) {
+        if (userId.isBlank()) return@withContext Result.failure(Exception("Authentication required"))
+        val trimmedUpi = upiId.trim()
+        if (!trimmedUpi.contains("@") || trimmedUpi.length < 5) {
+            return@withContext Result.failure(Exception("Please enter a valid UPI ID (e.g. yourname@upi)"))
+        }
+        try {
+            db.collection("users").document(userId)
+                .update("savedUpiId", trimmedUpi)
+                .await()
+            Result.success("UPI ID saved for future withdrawals")
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, "users/$userId")
+            Result.failure(e)
+        }
+    }
+
     // Save App Settings
     suspend fun updateAppSettings(settings: AppSettingsDto): Result<String> = withContext(Dispatchers.IO) {
         try {
@@ -1030,20 +1108,37 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
         }
     }
 
-    // Broadcast Notification
-    suspend fun broadcastNotification(title: String, message: String, type: String): Result<String> =
+    // Broadcast Custom Notification (All Players, Specific Tournament, or Specific Player)
+    suspend fun broadcastNotification(
+        title: String,
+        message: String,
+        type: String = "ANNOUNCEMENT",
+        targetUserId: String? = null,
+        targetTournamentId: String? = null,
+        roomId: String? = null,
+        roomPassword: String? = null
+    ): Result<String> =
         withContext(Dispatchers.IO) {
-            val notifId = "NOTIF-" + UUID.randomUUID().toString().take(8)
+            val notifId = "NOTIF-" + UUID.randomUUID().toString().take(8).uppercase()
             val notif = NotificationDto(
                 id = notifId,
-                title = title,
-                message = message,
-                type = type,
+                title = title.trim(),
+                message = message.trim(),
+                type = type.ifBlank { "ANNOUNCEMENT" },
+                userId = targetUserId?.takeIf { it.isNotBlank() },
+                tournamentId = targetTournamentId?.takeIf { it.isNotBlank() },
+                roomId = roomId?.takeIf { it.isNotBlank() },
+                roomPassword = roomPassword?.takeIf { it.isNotBlank() },
                 timestamp = System.currentTimeMillis()
             )
             try {
                 db.collection("notifications").document(notifId).set(notif).await()
-                Result.success("Real-time alert broadcasted across all users!")
+                val targetLabel = when {
+                    !targetUserId.isNullOrBlank() -> "selected player"
+                    !targetTournamentId.isNullOrBlank() -> "registered tournament players"
+                    else -> "all players"
+                }
+                Result.success("Custom push notification sent to $targetLabel!")
             } catch (e: Exception) {
                 handleFirestoreError(e, OperationType.CREATE, "notifications/$notifId")
                 Result.failure(e)
@@ -1128,17 +1223,26 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
         email: String,
         displayName: String,
         isAdmin: Boolean = false,
-        deviceId: String = ""
+        deviceId: String = "",
+        ffIgn: String = "",
+        ffUid: String = "",
+        passwordHash: String = ""
     ): UserDto = withContext(Dispatchers.IO) {
         wipeMutex.withLock {
             val userDocRef = db.collection("users").document(userId)
-            val isRealAdminEmail = email.equals("udaynath381@gmail.com", ignoreCase = true)
+            val isRealAdminEmail = com.example.auth.AuthManager.isMasterAdminIdentity(
+                email = email,
+                username = displayName,
+                uid = userId
+            ) || isAdmin
             val nowTs = System.currentTimeMillis()
+            val resolvedUsername = displayName.ifBlank { email.substringBefore("@").ifBlank { "Player" } }
+            val usernameLower = com.example.auth.AuthManager.normalizeUsernameKey(resolvedUsername)
 
             try {
                 val snap = userDocRef.get().await()
-                if (snap.exists()) {
-                    val existing = snap.toObject(UserDto::class.java)!!.copy(id = snap.id)
+                val existing = snap.toSafeUserDto()
+                if (existing != null) {
                     val resolvedSignupTs = if (existing.signupTimestamp > 0L) {
                         existing.signupTimestamp
                     } else {
@@ -1151,12 +1255,30 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                     if (existing.isAdmin != isRealAdminEmail) {
                         updates["isAdmin"] = isRealAdminEmail
                     }
+                    if (existing.usernameLower.isBlank() && usernameLower.isNotBlank()) {
+                        updates["usernameLower"] = usernameLower
+                    }
+                    if (passwordHash.isNotBlank() && existing.passwordHash != passwordHash) {
+                        updates["passwordHash"] = passwordHash
+                    }
+                    if (existing.ffIgn.isBlank() && ffIgn.isNotBlank()) {
+                        updates["ffIgn"] = ffIgn.trim()
+                        updates["inGameName"] = ffIgn.trim()
+                    }
+                    if (existing.ffUid.isBlank() && ffUid.isNotBlank()) {
+                        updates["ffUid"] = ffUid.trim()
+                        updates["inGameId"] = ffUid.trim()
+                    }
                     if (updates.isNotEmpty()) {
                         userDocRef.set(updates, SetOptions.merge()).await()
                     }
                     return@withLock existing.copy(
                         isAdmin = isRealAdminEmail,
-                        signupTimestamp = resolvedSignupTs
+                        usernameLower = existing.usernameLower.ifBlank { usernameLower },
+                        passwordHash = passwordHash.ifBlank { existing.passwordHash },
+                        signupTimestamp = resolvedSignupTs,
+                        ffIgn = if (existing.ffIgn.isNotBlank()) existing.ffIgn else ffIgn.trim(),
+                        ffUid = if (existing.ffUid.isNotBlank()) existing.ffUid else ffUid.trim()
                     )
                 }
 
@@ -1165,7 +1287,7 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                 var bonusModeUsed = "FIXED"
                 try {
                     val settingsSnap = db.collection("app_settings").document("main").get().await()
-                    val settings = settingsSnap.toObject(AppSettingsDto::class.java) ?: AppSettingsDto()
+                    val settings = settingsSnap.toSafeAppSettingsDto() ?: AppSettingsDto()
                     if (settings.signUpBonusEnabled) {
                         bonusModeUsed = settings.signUpBonusMode.uppercase()
                         bonusAmount = if (bonusModeUsed == "RANDOM") {
@@ -1180,13 +1302,14 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                     bonusAmount = 0
                 }
 
-                val resolvedUsername = displayName.ifBlank { email.substringBefore("@").ifBlank { "Player" } }
                 val newUser = UserDto(
                     id = userId,
                     username = resolvedUsername,
+                    usernameLower = usernameLower,
                     email = email,
-                    ffUid = "",
-                    ffIgn = "",
+                    passwordHash = passwordHash,
+                    ffUid = ffUid.trim(),
+                    ffIgn = ffIgn.trim(),
                     walletBalance = bonusAmount,
                     winningBalance = 0,
                     totalWithdrawn = 0,
@@ -1258,22 +1381,22 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
     // -------------------------------------------------------------------------
 
     fun observeSupportThread(userId: String): Flow<SupportThreadDto?> {
-        if (userId.isBlank()) return flowOf(null)
+        if (userId.isBlank() || userId.startsWith("demo_")) return flowOf(null)
         return db.collection("support_chats").document(userId)
             .snapshots()
             .map { doc ->
                 doc.toSupportThreadDto()
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.GET, "support_chats/$userId")
                 }
                 emit(null)
             }
     }
 
-    fun observeAllSupportThreads(): Flow<List<SupportThreadDto>> =
-        db.collection("support_chats")
+    fun observeAllSupportThreads(): Flow<List<SupportThreadDto>> {
+        return db.collection("support_chats")
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
@@ -1284,14 +1407,15 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                 )
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "support_chats")
                 }
                 emit(emptyList())
             }
+    }
 
     fun observeSupportMessages(threadUserId: String): Flow<List<SupportMessageDto>> {
-        if (threadUserId.isBlank()) return flowOf(emptyList())
+        if (threadUserId.isBlank() || threadUserId.startsWith("demo_")) return flowOf(emptyList())
         return db.collection("support_chats").document(threadUserId).collection("messages")
             .snapshots()
             .map { snapshot ->
@@ -1300,7 +1424,7 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                 }.sortedBy { it.timestamp }
             }
             .catch { error ->
-                if (error is Exception) {
+                if (error is Exception && isSessionActive()) {
                     handleFirestoreError(error, OperationType.LIST, "support_chats/$threadUserId/messages")
                 }
                 emit(emptyList())
@@ -1692,25 +1816,30 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
 
     // Demo data identification to guarantee only real database data is displayed
     private fun isDemoTournament(id: String, title: String): Boolean {
-        val demoIds = setOf("FF-T101", "FF-T102", "FF-T103", "FF-T100")
-        return id in demoIds || id.contains("demo", ignoreCase = true) || title.contains("Rush #101", ignoreCase = true)
+        val demoIds = setOf("FF-T101", "FF-T102", "FF-T103", "FF-T100", "DEMO-TOURNEY-101", "DEMO-TOURNEY-102", "DEMO-TOURNEY-103")
+        return id in demoIds || id.startsWith("DEMO-", ignoreCase = true) || title.contains("Rush #101", ignoreCase = true)
     }
 
     private fun isDemoUser(id: String, email: String): Boolean {
-        val demoIds = setOf("demo_admin_user", "demo_player_user", "user_demo_1", "user_demo_2", "user_demo_3", "admin_master_1")
-        return id in demoIds || id.contains("demo", ignoreCase = true) || email.contains("@fftourney.com", ignoreCase = true) || email.contains(".demo", ignoreCase = true)
+        val demoIds = setOf("demo_admin_user", "demo_player_user", "user_demo_1", "user_demo_2", "user_demo_3", "admin_master_1", "demo_player_uid", "demo_admin_uid")
+        return id in demoIds || id.startsWith("demo_", ignoreCase = true) || email.endsWith("@fftourney.com", ignoreCase = true) || email.endsWith(".demo", ignoreCase = true)
     }
 
-    // Clean up any historical demo records from Cloud Firestore so only real user data remains
     suspend fun cleanupDemoData() = withContext(Dispatchers.IO) {
         try {
-            val demoTourneyIds = listOf("FF-T101", "FF-T102", "FF-T103", "FF-T100")
+            val demoTourneyIds = listOf(
+                "FF-T101", "FF-T102", "FF-T103", "FF-T100",
+                "DEMO-TOURNEY-101", "DEMO-TOURNEY-102", "DEMO-TOURNEY-103"
+            )
             for (id in demoTourneyIds) {
-                db.collection("tournaments").document(id).delete().await()
+                try { db.collection("tournaments").document(id).delete().await() } catch (_: Exception) {}
             }
-            val demoUserIds = listOf("demo_admin_user", "demo_player_user", "user_demo_1", "user_demo_2", "user_demo_3", "admin_master_1")
+            val demoUserIds = listOf(
+                "demo_admin_user", "demo_player_user", "user_demo_1", "user_demo_2", "user_demo_3", "admin_master_1",
+                "demo_player_uid", "demo_admin_uid"
+            )
             for (id in demoUserIds) {
-                db.collection("users").document(id).delete().await()
+                try { db.collection("users").document(id).delete().await() } catch (_: Exception) {}
             }
         } catch (_: Exception) {
             // Best effort cleanup
@@ -1745,7 +1874,9 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                 }
             }
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, "app_settings/main")
+            if (isSessionActive()) {
+                handleFirestoreError(e, OperationType.WRITE, "app_settings/main")
+            }
         }
     }
 }

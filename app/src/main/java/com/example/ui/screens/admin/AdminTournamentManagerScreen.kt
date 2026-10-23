@@ -6,11 +6,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -325,16 +327,18 @@ fun AdminTournamentManagerScreen(viewModel: AppViewModel) {
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedButton(
                                     onClick = { showRoomDialogForTournament = null },
                                     shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(48.dp)
+                                        .heightIn(min = 48.dp)
                                 ) {
-                                    Text("Cancel", color = TextPrimaryDark)
+                                    Text("Cancel", color = TextPrimaryDark, maxLines = 1, softWrap = false)
                                 }
 
                                 Button(
@@ -346,9 +350,10 @@ fun AdminTournamentManagerScreen(viewModel: AppViewModel) {
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
                                     shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                     modifier = Modifier
                                         .weight(1.6f)
-                                        .height(48.dp)
+                                        .heightIn(min = 48.dp)
                                         .testTag("admin_save_room_button")
                                 ) {
                                     Icon(
@@ -357,7 +362,13 @@ fun AdminTournamentManagerScreen(viewModel: AppViewModel) {
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Publish & Alert", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text(
+                                        text = "Publish & Alert",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }
@@ -531,20 +542,27 @@ fun AdminTournamentItemCard(
             // Action Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 // Publish / Edit Room Credentials
                 Button(
                     onClick = onPublishRoom,
                     colors = ButtonDefaults.buttonColors(containerColor = HighContrastDark),
                     shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.weight(1f)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 40.dp)
                 ) {
                     Icon(imageVector = Icons.Default.Key, contentDescription = null, modifier = Modifier.size(14.dp), tint = FireOrange)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = if (tournament.roomId.isNullOrBlank()) "Add Room" else "Room Keys",
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
@@ -553,11 +571,14 @@ fun AdminTournamentItemCard(
                     OutlinedButton(
                         onClick = onSettle,
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 40.dp)
                     ) {
                         Icon(imageVector = Icons.Default.EmojiEvents, contentDescription = null, modifier = Modifier.size(14.dp), tint = TrophyGold)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Settle", fontSize = 12.sp, color = TextPrimaryDark)
+                        Text("Settle", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark, maxLines = 1, softWrap = false)
                     }
                 }
 

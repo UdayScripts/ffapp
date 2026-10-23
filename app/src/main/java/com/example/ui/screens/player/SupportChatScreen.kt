@@ -25,17 +25,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -58,7 +61,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -76,6 +78,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -111,6 +114,8 @@ fun SupportChatScreen(viewModel: AppViewModel) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
 
     var messageInput by remember { mutableStateOf("") }
     var attachedImageBase64 by remember { mutableStateOf<String?>(null) }
@@ -144,8 +149,8 @@ fun SupportChatScreen(viewModel: AppViewModel) {
         }
     }
 
-    // Mark unread messages as read and scroll to bottom when new messages arrive
-    LaunchedEffect(messages.size) {
+    // Mark unread messages as read and scroll to bottom when new messages arrive or keyboard opens
+    LaunchedEffect(messages.size, imeBottomPx > 0) {
         viewModel.markCurrentUserSupportRead()
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size) // +1 for welcome header item
@@ -160,354 +165,124 @@ fun SupportChatScreen(viewModel: AppViewModel) {
         label = "send_scale"
     )
 
-    Scaffold(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding(),
-        topBar = {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = SlateCardBg,
-                shadowElevation = 4.dp
+            .background(SlateLightBg)
+    ) {
+        // Pinned Top Bar (Always visible below status bar, never panned off-screen)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = SlateCardBg,
+            shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                    IconButton(
+                        onClick = { viewModel.navigateBack() },
+                        modifier = Modifier.testTag("support_chat_back_button")
                     ) {
-                        IconButton(
-                            onClick = { viewModel.navigateBack() },
-                            modifier = Modifier.testTag("support_chat_back_button")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimaryDark
+                        )
+                    }
+
+                    Box(contentAlignment = Alignment.BottomEnd) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .background(
+                                    Brush.linearGradient(listOf(FireOrangeDark, FireOrange)),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = TextPrimaryDark
+                                imageVector = Icons.Default.SupportAgent,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .background(SlateCardBg, CircleShape)
+                                .padding(2.dp)
+                                .background(SuccessGreen, CircleShape)
+                        )
+                    }
 
-                        Box(contentAlignment = Alignment.BottomEnd) {
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .background(
-                                        Brush.linearGradient(listOf(FireOrangeDark, FireOrange)),
-                                        CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SupportAgent,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .background(SlateCardBg, CircleShape)
-                                    .padding(2.dp)
-                                    .background(SuccessGreen, CircleShape)
-                            )
-                        }
+                    Spacer(modifier = Modifier.width(10.dp))
 
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Admin Support Desk",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = TextPrimaryDark,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Verified,
-                                    contentDescription = "Verified Support",
-                                    tint = FireOrange,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Online • Instant Screenshot & Ticket Help",
-                                fontSize = 11.sp,
-                                color = SuccessGreen,
-                                fontWeight = FontWeight.SemiBold,
+                                text = "Admin Support Desk",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Black,
+                                color = TextPrimaryDark,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = "Verified Support",
+                                tint = FireOrange,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
-                    }
-
-                    val statusLabel = thread?.status ?: "OPEN"
-                    Surface(
-                        color = if (statusLabel == "RESOLVED") SuccessGreen.copy(alpha = 0.14f) else FireOrange.copy(alpha = 0.14f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (statusLabel == "RESOLVED") SuccessGreen.copy(alpha = 0.4f) else FireOrange.copy(alpha = 0.4f)
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
                         Text(
-                            text = if (statusLabel == "RESOLVED") "✓ RESOLVED" else "● ACTIVE",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (statusLabel == "RESOLVED") SuccessGreen else FireOrangeDark,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            text = "Online • Instant Screenshot & Ticket Help",
+                            fontSize = 11.sp,
+                            color = SuccessGreen,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
-            }
-        },
-        bottomBar = {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding(),
-                color = SlateCardBg,
-                shadowElevation = 12.dp,
-                border = BorderStroke(1.dp, SlateMutedBorder)
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // Quick Topic Chips when composer is empty
-                    val quickPrompts = listOf(
-                        "💸 Withdrawal Delay",
-                        "💳 Deposit Screenshot",
-                        "🔑 Room ID & Pass",
-                        "🏆 Match Prize Help",
-                        "🎁 Sign-Up Bonus"
+
+                val statusLabel = thread?.status ?: "OPEN"
+                Surface(
+                    color = if (statusLabel == "RESOLVED") SuccessGreen.copy(alpha = 0.14f) else FireOrange.copy(alpha = 0.14f),
+                    border = BorderStroke(
+                        1.dp,
+                        if (statusLabel == "RESOLVED") SuccessGreen.copy(alpha = 0.4f) else FireOrange.copy(alpha = 0.4f)
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = if (statusLabel == "RESOLVED") "✓ RESOLVED" else "● ACTIVE",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (statusLabel == "RESOLVED") SuccessGreen else FireOrangeDark,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        quickPrompts.forEach { chip ->
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = SlateSubtle,
-                                border = BorderStroke(1.dp, SlateMutedBorder),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .clickable {
-                                        messageInput = "Hi Admin Support, I need assistance with ${chip.substringAfter(" ")}: "
-                                    }
-                            ) {
-                                Text(
-                                    text = chip,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = TextPrimaryDark,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Attached Photo Preview Bar with smooth animation
-                    AnimatedVisibility(
-                        visible = attachedImageBase64 != null || isEncodingPhoto,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            color = SlateSubtle,
-                            border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.6f))
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    if (isEncodingPhoto) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(36.dp),
-                                            color = FireOrange,
-                                            strokeWidth = 2.dp
-                                        )
-                                    } else {
-                                        val previewBitmap = remember(attachedImageBase64) {
-                                            ChatImageHelper.decodeBase64ToImageBitmap(attachedImageBase64)
-                                        }
-                                        if (previewBitmap != null) {
-                                            Image(
-                                                bitmap = previewBitmap,
-                                                contentDescription = "Selected photo preview",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .size(48.dp)
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .clickable { fullScreenImageBase64 = attachedImageBase64 }
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = if (isEncodingPhoto) "Optimizing screenshot..." else "Screenshot Ready to Send",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextPrimaryDark
-                                        )
-                                        Text(
-                                            text = "Tap image to preview or add a caption below",
-                                            fontSize = 10.sp,
-                                            color = TextSecondaryMuted
-                                        )
-                                    }
-                                }
-
-                                IconButton(
-                                    onClick = { attachedImageBase64 = null },
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .testTag("remove_attached_photo_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Remove photo",
-                                        tint = TextSecondaryMuted,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Redesigned Floating Pill Input Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Attach Photo Button
-                        Surface(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable(enabled = !isEncodingPhoto && !isSending) {
-                                    photoPickerLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
-                                }
-                                .testTag("attach_photo_button"),
-                            color = FireOrange.copy(alpha = 0.14f),
-                            border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.45f))
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.AddPhotoAlternate,
-                                    contentDescription = "Attach Photo",
-                                    tint = FireOrange,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        OutlinedTextField(
-                            value = messageInput,
-                            onValueChange = { messageInput = it },
-                            placeholder = {
-                                Text(
-                                    text = "Write a message or attach screenshot...",
-                                    fontSize = 13.sp,
-                                    color = TextSecondaryMuted
-                                )
-                            },
-                            maxLines = 4,
-                            shape = RoundedCornerShape(18.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = FireOrange,
-                                unfocusedBorderColor = SlateMutedBorder,
-                                focusedContainerColor = SlateSubtle,
-                                unfocusedContainerColor = SlateSubtle
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .testTag("support_message_input")
-                        )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Surface(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .scale(sendScale)
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable(enabled = canSend) {
-                                    val textToSend = messageInput.trim()
-                                    val imgToSend = attachedImageBase64
-                                    isSending = true
-                                    viewModel.sendUserSupportMessage(
-                                        messageText = textToSend,
-                                        imageBase64 = imgToSend
-                                    ) { success, _ ->
-                                        isSending = false
-                                        if (success) {
-                                            messageInput = ""
-                                            attachedImageBase64 = null
-                                        }
-                                    }
-                                }
-                                .testTag("send_support_message_button"),
-                            color = if (canSend) FireOrange else SlateSubtle,
-                            border = BorderStroke(1.dp, if (canSend) FireOrangeDark else SlateMutedBorder)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                if (isSending) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        color = Color.White,
-                                        strokeWidth = 2.dp
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Send,
-                                        contentDescription = "Send Message",
-                                        tint = if (canSend) Color.White else TextSecondaryMuted,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
-    ) { innerPadding ->
+
+        // Scrollable Message List filling exact space between Top Bar and Bottom Composer
         LazyColumn(
             state = listState,
             modifier = Modifier
-                .fillMaxSize()
-                .background(SlateLightBg)
-                .padding(innerPadding),
+                .weight(1f)
+                .fillMaxWidth()
+                .background(SlateLightBg),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -580,6 +355,239 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                         fullScreenImageBase64 = imgBase64
                     }
                 )
+            }
+        }
+
+        // Bottom Composer Bar - Uses union(navigationBars, ime) so there is zero gap above the keyboard
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = SlateCardBg,
+            shadowElevation = 12.dp,
+            border = BorderStroke(1.dp, SlateMutedBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
+            ) {
+                // Quick Topic Chips
+                val quickPrompts = listOf(
+                    "💸 Withdrawal Delay",
+                    "💳 Deposit Screenshot",
+                    "🔑 Room ID & Pass",
+                    "🏆 Match Prize Help",
+                    "🎁 Sign-Up Bonus"
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    quickPrompts.forEach { chip ->
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = SlateSubtle,
+                            border = BorderStroke(1.dp, SlateMutedBorder),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable {
+                                    messageInput = "Hi Admin Support, I need assistance with ${chip.substringAfter(" ")}: "
+                                }
+                        ) {
+                            Text(
+                                text = chip,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimaryDark,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Attached Photo Preview Bar with smooth animation
+                AnimatedVisibility(
+                    visible = attachedImageBase64 != null || isEncodingPhoto,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = SlateSubtle,
+                        border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.6f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (isEncodingPhoto) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(36.dp),
+                                        color = FireOrange,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    val previewBitmap = remember(attachedImageBase64) {
+                                        ChatImageHelper.decodeBase64ToImageBitmap(attachedImageBase64)
+                                    }
+                                    if (previewBitmap != null) {
+                                        Image(
+                                            bitmap = previewBitmap,
+                                            contentDescription = "Selected photo preview",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable { fullScreenImageBase64 = attachedImageBase64 }
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isEncodingPhoto) "Optimizing screenshot..." else "Screenshot Ready to Send",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimaryDark
+                                    )
+                                    Text(
+                                        text = "Tap image to preview or add a caption below",
+                                        fontSize = 10.sp,
+                                        color = TextSecondaryMuted
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { attachedImageBase64 = null },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .testTag("remove_attached_photo_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove photo",
+                                    tint = TextSecondaryMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Redesigned Floating Pill Input Bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Attach Photo Button
+                    Surface(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable(enabled = !isEncodingPhoto && !isSending) {
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                            .testTag("attach_photo_button"),
+                        color = FireOrange.copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.45f))
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.AddPhotoAlternate,
+                                contentDescription = "Attach Photo",
+                                tint = FireOrange,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    OutlinedTextField(
+                        value = messageInput,
+                        onValueChange = { messageInput = it },
+                        placeholder = {
+                            Text(
+                                text = "Write a message or attach screenshot...",
+                                fontSize = 13.sp,
+                                color = TextSecondaryMuted
+                            )
+                        },
+                        maxLines = 4,
+                        shape = RoundedCornerShape(18.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = FireOrange,
+                            unfocusedBorderColor = SlateMutedBorder,
+                            focusedContainerColor = SlateSubtle,
+                            unfocusedContainerColor = SlateSubtle
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("support_message_input")
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Surface(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .scale(sendScale)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable(enabled = canSend) {
+                                val textToSend = messageInput.trim()
+                                val imgToSend = attachedImageBase64
+                                isSending = true
+                                viewModel.sendUserSupportMessage(
+                                    messageText = textToSend,
+                                    imageBase64 = imgToSend
+                                ) { success, _ ->
+                                    isSending = false
+                                    if (success) {
+                                        messageInput = ""
+                                        attachedImageBase64 = null
+                                    }
+                                }
+                            }
+                            .testTag("send_support_message_button"),
+                        color = if (canSend) FireOrange else SlateSubtle,
+                        border = BorderStroke(1.dp, if (canSend) FireOrangeDark else SlateMutedBorder)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            if (isSending) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Send Message",
+                                    tint = if (canSend) Color.White else TextSecondaryMuted,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

@@ -750,13 +750,15 @@ private fun AdminWithdrawalCard(
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
                         onClick = onRejectClick,
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(1.dp, LiveRed),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = LiveRed),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 44.dp)
@@ -768,13 +770,14 @@ private fun AdminWithdrawalCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Reject & Refund", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Reject & Refund", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
 
                     Button(
                         onClick = onApproveClick,
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 44.dp)
@@ -787,7 +790,7 @@ private fun AdminWithdrawalCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Accept & Pay", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Accept & Pay", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, softWrap = false)
                     }
                 }
             }

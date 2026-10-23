@@ -67,7 +67,12 @@ fun AdminAuthScreen(viewModel: AppViewModel) {
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val isRealAdmin by viewModel.isRealAdmin.collectAsStateWithLifecycle()
     val authUser = FirebaseAuth.getInstance().currentUser
-    val activeEmail = currentUser?.email ?: authUser?.email ?: "Not signed in"
+    val session = com.example.auth.AuthManager.currentSession()
+    val activeIdentity = currentUser?.username?.takeIf { it.isNotBlank() }
+        ?: session?.username?.takeIf { it.isNotBlank() }
+        ?: currentUser?.email?.takeIf { it.isNotBlank() }
+        ?: authUser?.email
+        ?: "Not signed in"
 
     Scaffold(
         topBar = {
@@ -134,7 +139,7 @@ fun AdminAuthScreen(viewModel: AppViewModel) {
             )
 
             Text(
-                text = "Authorized Admin: udaynath381@gmail.com",
+                text = "Authorized Admin: Uday (Full Access)",
                 fontSize = 13.sp,
                 color = FireOrangeDark,
                 fontWeight = FontWeight.SemiBold
@@ -175,9 +180,9 @@ fun AdminAuthScreen(viewModel: AppViewModel) {
 
                     Text(
                         text = if (isRealAdmin) {
-                            "Logged in as $activeEmail. Full organizer controls for tournament creation, room keys, user payouts, and system alerts are enabled."
+                            "Logged in as $activeIdentity. Full organizer controls for tournament creation, room keys, user payouts, and system alerts are enabled."
                         } else {
-                            "Current account ($activeEmail) does not possess organizer privileges. Only the verified master email 'udaynath381@gmail.com' is allowed."
+                            "Current account ($activeIdentity) does not possess organizer privileges. Sign in with an authorized Admin account ('Uday') to access organizer tools."
                         },
                         fontSize = 12.sp,
                         color = TextPrimaryDark,

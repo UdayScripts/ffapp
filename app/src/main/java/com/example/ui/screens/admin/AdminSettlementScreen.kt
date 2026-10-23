@@ -5,11 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -118,48 +121,58 @@ fun AdminSettlementScreen(viewModel: AppViewModel) {
             if (selectedTourney != null && participants.isNotEmpty() && selectedTourney?.status != "COMPLETED") {
                 Surface(
                     color = SlateCardBg,
-                    shadowElevation = 8.dp,
+                    shadowElevation = 10.dp,
+                    border = BorderStroke(1.dp, SlateMutedBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Button(
-                        onClick = {
-                            val t = selectedTourney!!
-                            val settleList = participants.map { p ->
-                                val k = killsMap[p.id]?.toIntOrNull() ?: 0
-                                val r = rankMap[p.id]?.toIntOrNull() ?: 0
-                                val rankPrize = when (r) {
-                                    1 -> t.firstPrize
-                                    2 -> t.secondPrize
-                                    3 -> t.thirdPrize
-                                    else -> 0
-                                }
-                                val killBonus = k * t.perKillReward
-                                val total = rankPrize + killBonus
-                                SettleData(
-                                    participantId = p.id,
-                                    userId = p.userId,
-                                    kills = k,
-                                    placement = r,
-                                    prizeWon = total
-                                )
-                            }
-                            viewModel.settleMatch(t.id, settleList)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
-                        shape = RoundedCornerShape(12.dp),
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp)
-                            .height(48.dp)
-                            .testTag("disburse_winnings_button")
+                            .navigationBarsPadding()
+                            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp)
                     ) {
-                        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Distribute Prizes & Conclude Match",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
+                        Button(
+                            onClick = {
+                                val t = selectedTourney!!
+                                val settleList = participants.map { p ->
+                                    val k = killsMap[p.id]?.toIntOrNull() ?: 0
+                                    val r = rankMap[p.id]?.toIntOrNull() ?: 0
+                                    val rankPrize = when (r) {
+                                        1 -> t.firstPrize
+                                        2 -> t.secondPrize
+                                        3 -> t.thirdPrize
+                                        else -> 0
+                                    }
+                                    val killBonus = k * t.perKillReward
+                                    val total = rankPrize + killBonus
+                                    SettleData(
+                                        participantId = p.id,
+                                        userId = p.userId,
+                                        kills = k,
+                                        placement = r,
+                                        prizeWon = total
+                                    )
+                                }
+                                viewModel.settleMatch(t.id, settleList)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 50.dp)
+                                .testTag("disburse_winnings_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Distribute Prizes & Conclude Match",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

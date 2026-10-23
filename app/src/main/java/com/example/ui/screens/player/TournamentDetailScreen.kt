@@ -11,14 +11,20 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -62,6 +68,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -78,10 +85,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
+import com.example.R
 import com.example.ui.components.HighContrastCard
 import com.example.ui.components.MatchTypeBadge
 import com.example.ui.components.RoomCredentialsBox
@@ -155,12 +169,14 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
                 Surface(
                     color = SlateCardBg,
                     shadowElevation = 8.dp,
+                    border = BorderStroke(1.dp, SlateMutedBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -186,8 +202,10 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
                                 colors = ButtonDefaults.buttonColors(containerColor = HighContrastDark),
                                 shape = RoundedCornerShape(12.dp),
                                 border = BorderStroke(1.5.dp, FireOrange),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                                modifier = Modifier.testTag("enter_lobby_cta_button")
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("enter_lobby_cta_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.SportsEsports,
@@ -212,8 +230,10 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
                                 enabled = !isFull,
                                 colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
                                 shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                                modifier = Modifier.testTag("join_tournament_cta_button")
+                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("join_tournament_cta_button")
                             ) {
                                 Text(
                                     text = if (isFull) "Match Full" else "Join Tournament",
@@ -358,17 +378,23 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.weight(1f)
                                 ) {
+                                    val badgeComposition by rememberLottieComposition(
+                                        LottieCompositionSpec.RawRes(R.raw.tournament_registration_success)
+                                    )
+                                    val badgeProgress by animateLottieCompositionAsState(
+                                        composition = badgeComposition,
+                                        iterations = LottieConstants.IterateForever
+                                    )
                                     Box(
                                         modifier = Modifier
-                                            .size(40.dp)
-                                            .background(FireOrange.copy(alpha = 0.2f), CircleShape),
+                                            .size(44.dp)
+                                            .background(SuccessGreen.copy(alpha = 0.16f), CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Key,
-                                            contentDescription = null,
-                                            tint = FireOrange,
-                                            modifier = Modifier.size(20.dp)
+                                        LottieAnimation(
+                                            composition = badgeComposition,
+                                            progress = { badgeProgress },
+                                            modifier = Modifier.size(40.dp)
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(12.dp))
@@ -656,35 +682,42 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.65f))
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .systemBarsPadding()
+                    .imePadding()
+                    .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 52.dp)
                     .clickable { showJoinDialog = false },
-                contentAlignment = Alignment.BottomCenter
+                contentAlignment = Alignment.Center
             ) {
                 val isCompactDialog = maxWidth < 360.dp
+                val sheetMaxHeight = maxHeight * 0.82f
 
                 androidx.compose.animation.AnimatedVisibility(
                     visible = sheetVisible,
                     enter = androidx.compose.animation.slideInVertically(
-                        initialOffsetY = { it },
+                        initialOffsetY = { it / 2 },
                         animationSpec = androidx.compose.animation.core.spring(
                             dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
                             stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
                         )
                     ) + androidx.compose.animation.fadeIn(),
-                    exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+                    exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it / 2 }) + androidx.compose.animation.fadeOut()
                 ) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = maxHeight * 0.92f)
+                        .heightIn(max = sheetMaxHeight)
                         .clickable(enabled = false) {}
                         .testTag("freefire_room_card_dialog"),
-                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    shape = RoundedCornerShape(24.dp),
                     color = Color(0xFF0F172A),
-                    border = BorderStroke(1.5.dp, FireOrange)
+                    border = BorderStroke(1.5.dp, FireOrange),
+                    shadowElevation = 24.dp
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = sheetMaxHeight)
                     ) {
                         // Official Free Fire Room Card Top Bar with Drag Handle
                         Surface(
@@ -822,7 +855,7 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
                         // Main Scrollable Body
                         Column(
                             modifier = Modifier
-                                .weight(1f)
+                                .weight(1f, fill = false)
                                 .fillMaxWidth()
                                 .verticalScroll(rememberScrollState())
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1039,8 +1072,41 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
                                     OutlinedTextField(
                                         value = inputIgn,
                                         onValueChange = { inputIgn = it },
-                                        label = { Text("Free Fire In-Game Name (IGN) *", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                        placeholder = { Text("e.g. Thunder_Pro_99", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        label = {
+                                            Text(
+                                                text = "Free Fire In-Game Name (IGN) *",
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        placeholder = {
+                                            Text(
+                                                text = "e.g. Thunder_Pro_99",
+                                                color = Color(0xFF94A3B8),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        textStyle = TextStyle(
+                                            color = Color.White,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = Color.White,
+                                            unfocusedTextColor = Color.White,
+                                            disabledTextColor = Color(0xFFCBD5E1),
+                                            focusedContainerColor = Color(0xFF0F172A),
+                                            unfocusedContainerColor = Color(0xFF0F172A),
+                                            focusedBorderColor = FireOrange,
+                                            unfocusedBorderColor = Color(0xFF64748B),
+                                            focusedLabelColor = FireOrange,
+                                            unfocusedLabelColor = Color(0xFFE2E8F0),
+                                            focusedPlaceholderColor = Color(0xFF94A3B8),
+                                            unfocusedPlaceholderColor = Color(0xFF94A3B8),
+                                            cursorColor = FireOrange
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth().testTag("join_ign_input")
                                     )
@@ -1048,8 +1114,41 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
                                     OutlinedTextField(
                                         value = inputUid,
                                         onValueChange = { inputUid = it },
-                                        label = { Text("Free Fire Player UID *", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                        placeholder = { Text("e.g. 1928471920", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        label = {
+                                            Text(
+                                                text = "Free Fire Player UID *",
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        placeholder = {
+                                            Text(
+                                                text = "e.g. 1928471920",
+                                                color = Color(0xFF94A3B8),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        textStyle = TextStyle(
+                                            color = Color.White,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = Color.White,
+                                            unfocusedTextColor = Color.White,
+                                            disabledTextColor = Color(0xFFCBD5E1),
+                                            focusedContainerColor = Color(0xFF0F172A),
+                                            unfocusedContainerColor = Color(0xFF0F172A),
+                                            focusedBorderColor = FireOrange,
+                                            unfocusedBorderColor = Color(0xFF64748B),
+                                            focusedLabelColor = FireOrange,
+                                            unfocusedLabelColor = Color(0xFFE2E8F0),
+                                            focusedPlaceholderColor = Color(0xFF94A3B8),
+                                            unfocusedPlaceholderColor = Color(0xFF94A3B8),
+                                            cursorColor = FireOrange
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth().testTag("join_uid_input")
                                     )
@@ -1074,73 +1173,90 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
                             }
                         }
 
-                        // Bottom Confirmation Action Bar
+                        // Bottom Confirmation Action Bar (Pinned inside floating modal card, never clipped)
                         Surface(
                             color = Color(0xFF1E293B),
                             border = BorderStroke(1.dp, Color(0xFF334155)),
+                            shadowElevation = 12.dp,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
+                                // Summary Row: Selected Seat on left, Entry Fee & Wallet Balance on right
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = if (chosenSlot != null) "SELECTED SEAT: SLOT #$chosenSlot" else "SEAT: AUTO-ASSIGN",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = TrophyGold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "Entry: ₹${t.entryFee} • Wallet: ₹$userBal",
-                                            fontSize = 11.sp,
-                                            color = if (hasEnough) SuccessGreen else Color(0xFFEF4444),
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                                    Text(
+                                        text = if (chosenSlot != null) "SELECTED SEAT: SLOT #$chosenSlot" else "⚡ SEAT: AUTO-ASSIGN",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = TrophyGold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
 
                                     Spacer(modifier = Modifier.width(8.dp))
 
-                                    Button(
-                                        onClick = {
-                                            if (!hasEnough) {
-                                                showJoinDialog = false
-                                                viewModel.navigateTo(Screen.Wallet)
-                                                return@Button
-                                            }
-                                            if (inputIgn.isBlank() || inputUid.isBlank()) {
-                                                Toast.makeText(context, "Please enter your Free Fire IGN and UID to proceed!", Toast.LENGTH_SHORT).show()
-                                                return@Button
-                                            }
-                                            viewModel.updateGamingProfile(inputIgn.trim(), inputUid.trim())
-                                            viewModel.joinTournament(t.id, inputIgn.trim(), inputUid.trim(), chosenSlot)
+                                    Text(
+                                        text = "Entry: ${if (t.entryFee == 0) "FREE" else "₹${t.entryFee}"} • Wallet: ₹$userBal",
+                                        fontSize = 11.sp,
+                                        color = if (hasEnough) SuccessGreen else Color(0xFFEF4444),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+
+                                // Full-width Prominent Action Button (never cramped or cut off)
+                                Button(
+                                    onClick = {
+                                        if (!hasEnough) {
                                             showJoinDialog = false
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (hasEnough) FireOrange else SuccessGreen
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = if (isCompactDialog) 10.dp else 14.dp, vertical = 10.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.testTag("confirm_join_button")
-                                    ) {
-                                        val seatText = if (chosenSlot != null) "Slot #$chosenSlot" else "Auto Seat"
-                                        Text(
-                                            text = if (hasEnough) "CONFIRM & SIT ($seatText)" else "TOP-UP WALLET",
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = if (isCompactDialog) 11.sp else 12.sp,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
+                                            viewModel.navigateTo(Screen.Wallet)
+                                            return@Button
+                                        }
+                                        if (inputIgn.isBlank() || inputUid.isBlank()) {
+                                            Toast.makeText(context, "Please enter your Free Fire IGN and UID to proceed!", Toast.LENGTH_SHORT).show()
+                                            return@Button
+                                        }
+                                        viewModel.updateGamingProfile(inputIgn.trim(), inputUid.trim())
+                                        viewModel.joinTournament(t.id, inputIgn.trim(), inputUid.trim(), chosenSlot)
+                                        showJoinDialog = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (hasEnough) FireOrange else SuccessGreen
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 50.dp)
+                                        .testTag("confirm_join_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SportsEsports,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    val seatText = if (chosenSlot != null) "Slot #$chosenSlot" else "Auto Seat"
+                                    val feeText = if (t.entryFee == 0) "FREE" else "₹${t.entryFee}"
+                                    Text(
+                                        text = if (hasEnough) "CONFIRM & SIT ($seatText) • $feeText" else "TOP-UP WALLET TO JOIN",
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White,
+                                        fontSize = if (isCompactDialog) 12.sp else 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }

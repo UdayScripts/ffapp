@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.BookmarkAdded
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContactSupport
@@ -37,9 +40,11 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -113,14 +118,19 @@ fun ProfileScreen(viewModel: AppViewModel) {
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var editIgn by remember(currentUser) { mutableStateOf(currentUser?.ffIgn ?: "") }
     var editUid by remember(currentUser) { mutableStateOf(currentUser?.ffUid ?: "") }
+    var editSavedUpi by remember(currentUser) { mutableStateOf(currentUser?.savedUpiId ?: "") }
 
     if (showEditProfileDialog) {
         EditProfileModalDialog(
             currentIgn = editIgn,
             currentUid = editUid,
+            currentSavedUpi = editSavedUpi,
             onDismiss = { showEditProfileDialog = false },
-            onSave = { newIgn, newUid ->
+            onSave = { newIgn, newUid, newSavedUpi ->
                 viewModel.updateGamingProfile(newIgn, newUid)
+                if (newSavedUpi.isNotBlank()) {
+                    viewModel.saveUserUpiId(newSavedUpi)
+                }
                 showEditProfileDialog = false
             }
         )
@@ -192,7 +202,7 @@ fun ProfileScreen(viewModel: AppViewModel) {
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = (currentUser?.username?.take(1) ?: "P").uppercase(),
+                                        text = (currentUser?.username?.takeIf { it.isNotBlank() }?.take(1) ?: "P").uppercase(),
                                         fontSize = if (isCompact) 20.sp else 24.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Color.White,
@@ -204,7 +214,7 @@ fun ProfileScreen(viewModel: AppViewModel) {
 
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = currentUser?.username ?: "Player",
+                                        text = currentUser?.username?.takeIf { it.isNotBlank() } ?: "Player",
                                         fontSize = if (isCompact) 16.sp else 18.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Color.White,
@@ -212,7 +222,7 @@ fun ProfileScreen(viewModel: AppViewModel) {
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "IGN: ${currentUser?.ffIgn ?: "Not Set"}",
+                                        text = "IGN: ${currentUser?.ffIgn?.takeIf { it.isNotBlank() } ?: "Not Set"}",
                                         fontSize = if (isCompact) 12.sp else 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = FireOrange,
@@ -227,7 +237,7 @@ fun ProfileScreen(viewModel: AppViewModel) {
                                         }
                                     ) {
                                         Text(
-                                            text = "UID: ${currentUser?.ffUid ?: "---"}",
+                                            text = "UID: ${currentUser?.ffUid?.takeIf { it.isNotBlank() } ?: "---"}",
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                             color = Color(0xFF94A3B8),
@@ -483,11 +493,104 @@ fun ProfileScreen(viewModel: AppViewModel) {
                     }
                 }
 
+                // Saved UPI ID for Withdrawals Card
+                item {
+                    val savedUpi = currentUser?.savedUpiId.orEmpty()
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                editIgn = currentUser?.ffIgn ?: ""
+                                editUid = currentUser?.ffUid ?: ""
+                                editSavedUpi = savedUpi
+                                showEditProfileDialog = true
+                            }
+                            .testTag("profile_saved_upi_card"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = SlateCardBg),
+                        border = BorderStroke(1.dp, if (savedUpi.isNotBlank()) SuccessGreen.copy(alpha = 0.5f) else SlateMutedBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(
+                                            if (savedUpi.isNotBlank()) SuccessGreen.copy(alpha = 0.15f) else SlateSubtle,
+                                            RoundedCornerShape(10.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Payments,
+                                        contentDescription = null,
+                                        tint = if (savedUpi.isNotBlank()) SuccessGreen else TextSecondaryMuted,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Saved UPI for Withdrawals",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = TextPrimaryDark,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = if (savedUpi.isNotBlank()) savedUpi else "Tap to save default UPI ID for payouts",
+                                        fontSize = 12.sp,
+                                        color = if (savedUpi.isNotBlank()) SuccessGreen else TextSecondaryMuted,
+                                        fontFamily = if (savedUpi.isNotBlank()) FontFamily.Monospace else FontFamily.Default,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (savedUpi.isNotBlank()) "Edit" else "Set Up →",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = if (savedUpi.isNotBlank()) SuccessGreen else FireOrange,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+
                 // Cloud Account & Google Sign-In Sync Card
                 item {
                     val coroutineScope = rememberCoroutineScope()
                     val credentialManager = remember { androidx.credentials.CredentialManager.create(context) }
                     val authUser = AuthManager.currentFirebaseUser()
+                    val activeSession = AuthManager.currentSession()
+                    val isAccountConnected = currentUser != null || activeSession != null || authUser != null
+                    val connectedLabel = when {
+                        !currentUser?.username.isNullOrBlank() -> "@${currentUser?.username}"
+                        !activeSession?.username.isNullOrBlank() -> "@${activeSession?.username}"
+                        !authUser?.email.isNullOrBlank() -> {
+                            val email = authUser?.email ?: ""
+                            if (email.endsWith("@esportsarena.app")) {
+                                "@${email.removeSuffix("@esportsarena.app")}"
+                            } else {
+                                email
+                            }
+                        }
+                        else -> "Player"
+                    }
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -505,7 +608,11 @@ fun ProfileScreen(viewModel: AppViewModel) {
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = if (authUser != null) "Connected: ${authUser.email}" else "Sign in with Google to sync wallet & match progress across devices",
+                                text = if (isAccountConnected) {
+                                    "Connected: $connectedLabel"
+                                } else {
+                                    "Sign in to sync wallet & match progress across devices"
+                                },
                                 fontSize = 11.sp,
                                 color = TextSecondaryMuted,
                                 maxLines = 2,
@@ -514,14 +621,14 @@ fun ProfileScreen(viewModel: AppViewModel) {
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            if (authUser == null) {
+                            if (!isAccountConnected) {
                                 Button(
                                     onClick = {
                                         AuthManager.onGoogleSignInClicked(
                                             context = context,
                                             credentialManager = credentialManager,
-                                            onAuthSuccess = { user ->
-                                                viewModel.onUserAuthenticated(user, isExplicitSignIn = true)
+                                            onAuthSuccess = { session ->
+                                                viewModel.onSessionAuthenticated(session, isExplicitSignIn = true)
                                             },
                                             onAuthError = { err ->
                                                 Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
@@ -579,11 +686,13 @@ fun ProfileScreen(viewModel: AppViewModel) {
                                                 context = context,
                                                 credentialManager = credentialManager,
                                                 onSignOutComplete = {
+                                                    viewModel.onUserSignedOut()
                                                     Toast.makeText(context, "Signed out", Toast.LENGTH_SHORT).show()
                                                 },
                                                 scope = coroutineScope
                                             )
-                                        }
+                                        },
+                                        modifier = Modifier.testTag("profile_sign_out_button")
                                     ) {
                                         Text(
                                             text = "Sign Out",
@@ -599,7 +708,7 @@ fun ProfileScreen(viewModel: AppViewModel) {
                     }
                 }
 
-                // Master Admin Management Portal (Strictly only visible to udaynath381@gmail.com)
+                // Master Admin Management Portal (Visible to Master Admin "Uday" and authorized admins)
                 if (isRealAdmin) {
                     item {
                         Card(
@@ -647,7 +756,7 @@ fun ProfileScreen(viewModel: AppViewModel) {
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "Master Control: udaynath381@gmail.com",
+                                            text = "Master Control: ${currentUser?.username?.takeIf { it.isNotBlank() } ?: "Uday"} (Full Access)",
                                             fontSize = 11.sp,
                                             color = FireOrangeDark,
                                             fontWeight = FontWeight.Medium,
@@ -692,81 +801,84 @@ fun ProfileScreen(viewModel: AppViewModel) {
 
                             // Help / Live Chat Support with Photo Send
                             Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFFFF7ED),
+                                border = BorderStroke(1.2.dp, if (isDarkMode) FireOrange.copy(alpha = 0.8f) else FireOrange),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable { viewModel.openUserSupportChat() }
-                                    .testTag("profile_open_support_chat_button"),
-                                color = if (isDarkMode) FireOrange.copy(alpha = 0.14f) else Color(0xFFFFF7ED),
-                                border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.45f))
+                                    .testTag("profile_open_support_chat_button")
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp)
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .background(FireOrange.copy(alpha = 0.18f), RoundedCornerShape(10.dp)),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .background(HighContrastDark, RoundedCornerShape(10.dp)),
-                                            contentAlignment = Alignment.Center
+                                        Icon(
+                                            imageVector = Icons.Default.ContactSupport,
+                                            contentDescription = null,
+                                            tint = FireOrange,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ContactSupport,
-                                                contentDescription = null,
-                                                tint = FireOrange,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = "Live Chat with Admin Support",
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = TextPrimaryDark,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                if (unreadSupportCount > 0) {
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Surface(
-                                                        color = LiveRed,
-                                                        shape = RoundedCornerShape(10.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "$unreadSupportCount NEW",
-                                                            color = Color.White,
-                                                            fontSize = 9.sp,
-                                                            fontWeight = FontWeight.Black,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
                                             Text(
-                                                text = "Chat live & send payment/match screenshots",
-                                                fontSize = 11.sp,
-                                                color = TextSecondaryMuted,
+                                                text = "Live Chat with Admin",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimaryDark,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
+                                            if (unreadSupportCount > 0) {
+                                                Surface(
+                                                    color = LiveRed,
+                                                    shape = RoundedCornerShape(10.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "$unreadSupportCount NEW",
+                                                        color = Color.White,
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Black,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
                                         }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Chat live & send screenshots",
+                                            fontSize = 11.sp,
+                                            color = TextSecondaryMuted,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Chat →",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = FireOrangeDark
-                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = FireOrange.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "Chat →",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = FireOrange,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
                                 }
                             }
 
@@ -827,17 +939,18 @@ fun ProfileScreen(viewModel: AppViewModel) {
 fun EditProfileModalDialog(
     currentIgn: String,
     currentUid: String,
+    currentSavedUpi: String = "",
     onDismiss: () -> Unit,
-    onSave: (ign: String, uid: String) -> Unit
+    onSave: (ign: String, uid: String, savedUpi: String) -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
 
     var ignInput by remember(currentIgn) { mutableStateOf(currentIgn) }
     var uidInput by remember(currentUid) { mutableStateOf(currentUid) }
+    var upiInput by remember(currentSavedUpi) { mutableStateOf(currentSavedUpi) }
 
-    var sheetVisible by remember { mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(Unit) { sheetVisible = true }
+    var sheetVisible by remember { mutableStateOf(true) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -846,37 +959,46 @@ fun EditProfileModalDialog(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.65f))
+                .background(Color.Black.copy(alpha = 0.72f))
+                .systemBarsPadding()
+                .imePadding()
+                .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 52.dp)
                 .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.BottomCenter
+            contentAlignment = Alignment.Center
         ) {
             val isCompactDialog = maxWidth < 360.dp
+            val sheetMaxHeight = maxHeight * 0.84f
 
             androidx.compose.animation.AnimatedVisibility(
                 visible = sheetVisible,
                 enter = androidx.compose.animation.slideInVertically(
-                    initialOffsetY = { it },
+                    initialOffsetY = { it / 2 },
                     animationSpec = androidx.compose.animation.core.spring(
                         dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
                         stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
                     )
                 ) + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it / 2 }) + androidx.compose.animation.fadeOut()
             ) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = false) {}
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    .heightIn(max = sheetMaxHeight)
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                        onClick = {}
+                    )
+                    .clip(RoundedCornerShape(24.dp)),
+                shape = RoundedCornerShape(24.dp),
                 color = SlateCardBg,
-                border = BorderStroke(1.dp, SlateMutedBorder),
-                shadowElevation = 20.dp
+                border = BorderStroke(1.5.dp, FireOrange.copy(alpha = 0.6f)),
+                shadowElevation = 24.dp
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
+                        .heightIn(max = sheetMaxHeight)
                 ) {
                     // Header with tactical gradient & Bottom Sheet Drag Handle
                     Column(
@@ -956,10 +1078,12 @@ fun EditProfileModalDialog(
                         }
                     }
 
-                    // Content Body
+                    // Content Body (Scrollable)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState())
                             .padding(horizontal = if (isCompactDialog) 14.dp else 20.dp, vertical = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
@@ -1082,7 +1206,7 @@ fun EditProfileModalDialog(
 
                             OutlinedTextField(
                                 value = uidInput,
-                                onValueChange = { uidInput = it.filter { char -> char.isDigit() } },
+                                onValueChange = { uidInput = it.filter { char -> !char.isWhitespace() } },
                                 label = { Text("Free Fire Player UID", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 placeholder = { Text("e.g. 1928471920", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 leadingIcon = {
@@ -1101,12 +1225,12 @@ fun EditProfileModalDialog(
                                             .padding(end = 8.dp)
                                             .clickable {
                                                 val clip = clipboardManager.getText()?.text?.trim() ?: ""
-                                                val numericOnly = clip.filter { it.isDigit() }
-                                                if (numericOnly.isNotBlank()) {
-                                                    uidInput = numericOnly
+                                                val cleaned = clip.filter { it.isDigit() }.ifBlank { clip.filter { !it.isWhitespace() } }
+                                                if (cleaned.isNotBlank()) {
+                                                    uidInput = cleaned
                                                     Toast.makeText(context, "Pasted UID from clipboard!", Toast.LENGTH_SHORT).show()
                                                 } else {
-                                                    Toast.makeText(context, "No numeric UID found in clipboard", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                     ) {
@@ -1138,6 +1262,26 @@ fun EditProfileModalDialog(
                                     .fillMaxWidth()
                                     .testTag("profile_edit_uid_input")
                             )
+
+                            OutlinedTextField(
+                                value = upiInput,
+                                onValueChange = { upiInput = it.trim() },
+                                label = { Text("Default UPI ID (for Payouts)", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                placeholder = { Text("e.g. yourname@okaxis or 9876543210@paytm", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Payments,
+                                        contentDescription = null,
+                                        tint = SuccessGreen,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("profile_edit_upi_input")
+                            )
                         }
 
                         // Guidance Micro-Note
@@ -1159,7 +1303,7 @@ fun EditProfileModalDialog(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Make sure your numeric UID matches your Free Fire profile. Room hosts strictly verify this number before seating you in custom match slots.",
+                                    text = "UID is strictly verified by custom room hosts before seating. Your Saved UPI ID auto-fills across all future tournament winning withdrawals.",
                                     fontSize = 11.sp,
                                     color = TextSecondaryMuted,
                                     lineHeight = 15.sp,
@@ -1168,10 +1312,20 @@ fun EditProfileModalDialog(
                             }
                         }
 
-                        // Action Buttons
+                    }
+
+                    // Pinned Action Buttons Footer
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = SlateCardBg,
+                        border = BorderStroke(1.dp, SlateMutedBorder),
+                        shadowElevation = 10.dp
+                    ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = if (isCompactDialog) 14.dp else 20.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedButton(
@@ -1194,11 +1348,19 @@ fun EditProfileModalDialog(
 
                             Button(
                                 onClick = {
-                                    if (ignInput.isBlank() || uidInput.isBlank()) {
-                                        Toast.makeText(context, "Please enter both IGN and UID!", Toast.LENGTH_SHORT).show()
+                                    val finalIgn = ignInput.trim()
+                                    val finalUid = uidInput.trim()
+                                    val finalUpi = upiInput.trim()
+                                    if (finalIgn.isBlank() && finalUid.isBlank() && finalUpi.isBlank()) {
+                                        Toast.makeText(context, "Please enter your Free Fire details or UPI ID!", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
-                                    onSave(ignInput.trim(), uidInput.trim())
+                                    if (finalUpi.isNotBlank() && (!finalUpi.contains("@") || finalUpi.length < 5)) {
+                                        Toast.makeText(context, "Please enter a valid UPI ID (e.g. name@upi)", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
+                                    onSave(finalIgn, finalUid, finalUpi)
+                                    Toast.makeText(context, "Profile & UPI details updated!", Toast.LENGTH_SHORT).show()
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
                                 shape = RoundedCornerShape(12.dp),
@@ -1246,37 +1408,42 @@ fun RulesAndFairPlayModalDialog(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.65f))
+                .background(Color.Black.copy(alpha = 0.72f))
+                .systemBarsPadding()
+                .imePadding()
+                .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 52.dp)
                 .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.BottomCenter
+            contentAlignment = Alignment.Center
         ) {
             val isCompactDialog = maxWidth < 360.dp
+            val sheetMaxHeight = maxHeight * 0.84f
 
             androidx.compose.animation.AnimatedVisibility(
                 visible = sheetVisible,
                 enter = androidx.compose.animation.slideInVertically(
-                    initialOffsetY = { it },
+                    initialOffsetY = { it / 2 },
                     animationSpec = androidx.compose.animation.core.spring(
                         dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
                         stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
                     )
                 ) + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it / 2 }) + androidx.compose.animation.fadeOut()
             ) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = sheetMaxHeight)
                     .clickable(enabled = false) {}
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    .clip(RoundedCornerShape(24.dp)),
+                shape = RoundedCornerShape(24.dp),
                 color = SlateCardBg,
-                border = BorderStroke(1.dp, SlateMutedBorder),
-                shadowElevation = 20.dp
+                border = BorderStroke(1.5.dp, TrophyGold.copy(alpha = 0.6f)),
+                shadowElevation = 24.dp
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
+                        .heightIn(max = sheetMaxHeight)
                 ) {
                     // Header with Drag Handle
                     Column(
@@ -1354,10 +1521,12 @@ fun RulesAndFairPlayModalDialog(
                         }
                     }
 
-                    // Body
+                    // Body (Scrollable)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState())
                             .padding(horizontal = if (isCompactDialog) 14.dp else 20.dp, vertical = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
@@ -1434,28 +1603,43 @@ fun RulesAndFairPlayModalDialog(
                             }
                         }
 
-                        Button(
-                            onClick = onDismiss,
-                            colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    }
+
+                    // Pinned Action Button Footer
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = SlateCardBg,
+                        border = BorderStroke(1.dp, SlateMutedBorder),
+                        shadowElevation = 10.dp
+                    ) {
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 48.dp)
+                                .padding(horizontal = if (isCompactDialog) 14.dp else 20.dp, vertical = 14.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "I Understand & Accept Rules",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Button(
+                                onClick = onDismiss,
+                                colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "I Understand & Accept Rules",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }

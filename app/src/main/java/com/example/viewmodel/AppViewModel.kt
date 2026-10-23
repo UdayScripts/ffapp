@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.auth.AuthManager
+import com.example.auth.AuthenticatedSession
 import com.example.data.firestore.AppSettingsDto
 import com.example.data.firestore.FirestoreRepository
 import com.example.data.firestore.NotificationDto
@@ -19,6 +20,7 @@ import com.example.data.firestore.WithdrawalRequestDto
 import com.example.data.payment.PaytmPaymentService
 import com.example.data.payment.PaytmTxnStatus
 import com.example.notification.PushNotificationHelper
+import com.example.ui.components.RegistrationSuccessEvent
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +33,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -62,7 +65,8 @@ data class UiNotificationAlert(
     val message: String,
     val roomId: String? = null,
     val roomPass: String? = null,
-    val id: String = ""
+    val id: String = "",
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -75,11 +79,87 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _screenHistory = mutableListOf<Screen>()
 
-    // Current active user ID (only real authenticated user)
+    // Current active user ID (real authenticated session or Google Sign-In user)
     private val _currentUserId = MutableStateFlow(
-        FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        AuthManager.loadSavedSession(application)?.uid
+            ?: FirebaseAuth.getInstance().currentUser?.uid
+            ?: ""
     )
     val currentUserId: StateFlow<String> = _currentUserId.asStateFlow()
+
+    suspend fun registerUser(
+        username: String,
+        email: String,
+        password: String,
+        ffIgn: String,
+        ffUid: String
+    ): Result<AuthenticatedSession> {
+        val result = AuthManager.registerWithUsernameAndPassword(
+            context = getApplication(),
+            username = username,
+            email = email,
+            password = password,
+            ffIgn = ffIgn.trim(),
+            ffUid = ffUid.trim()
+        )
+        result.onSuccess { session ->
+            val deviceId = try {
+                android.provider.Settings.Secure.getString(
+                    getApplication<Application>().contentResolver,
+                    android.provider.Settings.Secure.ANDROID_ID
+                ) ?: ""
+            } catch (_: Exception) {
+                ""
+            }
+            val isUserAdmin = AuthManager.isMasterAdminIdentity(
+                email = session.email,
+                username = session.username,
+                uid = session.uid
+            ) || session.isAdmin
+            firestoreRepo.syncUserProfile(
+                userId = session.uid,
+                email = session.email,
+                displayName = session.username.ifBlank { "Player" },
+                isAdmin = isUserAdmin,
+                deviceId = deviceId,
+                ffIgn = ffIgn.trim(),
+                ffUid = ffUid.trim(),
+                passwordHash = session.passwordHash
+            )
+            onSessionAuthenticated(session, isExplicitSignIn = true)
+        }
+        return result
+    }
+
+    suspend fun loginWithUsernameOrEmail(
+        usernameOrEmail: String,
+        password: String
+    ): Result<AuthenticatedSession> {
+        val result = AuthManager.signInWithUsernameOrEmail(
+            context = getApplication(),
+            usernameOrEmail = usernameOrEmail,
+            password = password
+        )
+        result.onSuccess { session ->
+            onSessionAuthenticated(session, isExplicitSignIn = true)
+        }
+        return result
+    }
+
+    suspend fun sendPasswordReset(emailOrUsername: String): Result<String> {
+        return AuthManager.sendPasswordReset(emailOrUsername)
+    }
+
+    fun onUserSignedOut() {
+        _currentUserId.value = ""
+        _optimisticUserOverride.value = null
+        _selectedTournamentId.value = null
+        _selectedAdminSupportUserId.value = null
+        _screenHistory.clear()
+        _currentScreen.value = Screen.Dashboard
+    }
+
+
 
     // Persistent and optimistic read & cleared notification tracking + theme preference
     private val prefs by lazy {
@@ -219,9 +299,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _toastMessage = MutableSharedFlow<String>()
     val toastMessage: SharedFlow<String> = _toastMessage.asSharedFlow()
 
-    // Live Cloud Firestore Data Streams
-    val allTournaments: StateFlow<List<TournamentDto>> = firestoreRepo.observeTournaments()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // Lottie-based Tournament Registration Celebration State
+    private val _registrationSuccessEvent = MutableStateFlow<RegistrationSuccessEvent?>(null)
+    val registrationSuccessEvent: StateFlow<RegistrationSuccessEvent?> = _registrationSuccessEvent.asStateFlow()
+
+    fun dismissRegistrationSuccess() {
+        _registrationSuccessEvent.value = null
+    }
+
+    // Live Cloud Firestore Data Streams (Real Data Only)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val allTournaments: StateFlow<List<TournamentDto>> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeTournaments()
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val filteredTournaments: StateFlow<List<TournamentDto>> = combine(
         allTournaments,
@@ -235,34 +329,179 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val appSettings: StateFlow<AppSettingsDto?> = firestoreRepo.observeAppSettings()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    val allUsers: StateFlow<List<UserDto>> = firestoreRepo.observeAllUsers()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val currentUser: StateFlow<UserDto?> = _currentUserId.flatMapLatest { id ->
-        if (id.isNullOrBlank()) flowOf(null) else firestoreRepo.observeUser(id)
+    val appSettings: StateFlow<AppSettingsDto?> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(null)
+        } else {
+            firestoreRepo.observeAppSettings()
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    private val _optimisticUserOverride = MutableStateFlow<UserDto?>(null)
+
+    private fun buildSessionFallbackUser(uid: String): UserDto? {
+        if (uid.isBlank()) return null
+        val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
+            ?: AuthManager.loadSavedSession(getApplication())?.takeIf { it.uid == uid }
+        val fbUser = FirebaseAuth.getInstance().currentUser?.takeIf { it.uid == uid }
+        if (session == null && fbUser == null) return null
+        val email = session?.email ?: fbUser?.email ?: ""
+        val username = session?.username?.ifBlank { email.substringBefore("@").ifBlank { "Player" } }
+            ?: fbUser?.displayName?.ifBlank { email.substringBefore("@").ifBlank { "Player" } }
+            ?: "Player"
+        val isAdmin = AuthManager.isMasterAdminIdentity(email = email, username = username, uid = uid) ||
+            (session?.isAdmin == true)
+        return UserDto(
+            id = uid,
+            username = username,
+            usernameLower = AuthManager.normalizeUsernameKey(username),
+            email = email,
+            passwordHash = session?.passwordHash ?: "",
+            ffIgn = session?.ffIgn ?: "",
+            ffUid = session?.ffUid ?: "",
+            isAdmin = isAdmin
+        )
+    }
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val userTransactions: StateFlow<List<TransactionDto>> = _currentUserId.flatMapLatest { id ->
-        if (id.isNullOrBlank()) flowOf(emptyList()) else firestoreRepo.observeTransactions(id)
+    private val cloudCurrentUser: kotlinx.coroutines.flow.Flow<UserDto?> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(null)
+        } else {
+            firestoreRepo.observeUser(uid).onStart { emit(null) }
+        }
+    }
+
+    val currentUser: StateFlow<UserDto?> = combine(
+        _currentUserId,
+        cloudCurrentUser,
+        _optimisticUserOverride
+    ) { uid, cloudUser, optimistic ->
+        if (uid.isBlank()) {
+            null
+        } else {
+            val validOptimistic = optimistic?.takeIf { it.id == uid }
+            val baseUser = cloudUser ?: validOptimistic ?: buildSessionFallbackUser(uid)
+            if (baseUser != null && validOptimistic != null) {
+                baseUser.copy(
+                    id = uid,
+                    ffIgn = validOptimistic.ffIgn.ifBlank { baseUser.ffIgn },
+                    ffUid = validOptimistic.ffUid.ifBlank { baseUser.ffUid },
+                    savedUpiId = validOptimistic.savedUpiId.ifBlank { baseUser.savedUpiId },
+                    username = baseUser.username.ifBlank { validOptimistic.username },
+                    email = baseUser.email.ifBlank { validOptimistic.email }
+                )
+            } else {
+                baseUser?.copy(id = uid)
+            }
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        buildSessionFallbackUser(_currentUserId.value)
+    )
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val isRealAdmin: StateFlow<Boolean> = combine(_currentUserId, currentUser) { uid, user ->
+        if (uid.isBlank()) {
+            false
+        } else {
+            val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
+                ?: AuthManager.loadSavedSession(getApplication())?.takeIf { it.uid == uid }
+            val currentAuthEmail = FirebaseAuth.getInstance().currentUser?.takeIf { it.uid == uid }?.email
+            val email = user?.email ?: session?.email ?: currentAuthEmail ?: ""
+            val username = user?.username ?: session?.username ?: ""
+            val isAdminFlag = (user?.isAdmin == true) || (session?.isAdmin == true)
+            AuthManager.isMasterAdminIdentity(email = email, username = username, uid = uid) || isAdminFlag
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        run {
+            val uid = _currentUserId.value
+            val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
+            uid.isNotBlank() && (
+                AuthManager.isMasterAdminIdentity(email = session?.email, username = session?.username, uid = uid) ||
+                session?.isAdmin == true
+            )
+        }
+    )
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val cloudAllUsers: kotlinx.coroutines.flow.Flow<List<UserDto>> = combine(_currentUserId, isRealAdmin) { uid, isAdmin ->
+        uid to (isAdmin || isUserRealAdmin())
+    }.flatMapLatest { (uid, isAdmin) ->
+        if (uid.isBlank() || !isAdmin) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeAllUsers().onStart { emit(emptyList()) }
+        }
+    }
+
+    val allUsers: StateFlow<List<UserDto>> = combine(
+        cloudAllUsers,
+        currentUser,
+        _optimisticUserOverride
+    ) { usersFromCloud, activeUser, optimistic ->
+        val merged = usersFromCloud.map { u ->
+            if (optimistic != null && u.id == optimistic.id) {
+                u.copy(
+                    ffIgn = optimistic.ffIgn.ifBlank { u.ffIgn },
+                    ffUid = optimistic.ffUid.ifBlank { u.ffUid }
+                )
+            } else {
+                u
+            }
+        }.toMutableList()
+        val currentOrFallback = activeUser ?: buildSessionFallbackUser(_currentUserId.value)
+        if (currentOrFallback != null && currentOrFallback.id.isNotBlank() && merged.none { it.id == currentOrFallback.id }) {
+            merged.add(0, currentOrFallback)
+        }
+        merged
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        listOfNotNull(buildSessionFallbackUser(_currentUserId.value))
+    )
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val userTransactions: StateFlow<List<TransactionDto>> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeTransactions(uid)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val userParticipations: StateFlow<List<ParticipantDto>> = _currentUserId.flatMapLatest { id ->
-        if (id.isNullOrBlank()) flowOf(emptyList()) else firestoreRepo.observeUserParticipations(id)
+    val userParticipations: StateFlow<List<ParticipantDto>> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeUserParticipations(uid)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val userWithdrawals: StateFlow<List<WithdrawalRequestDto>> = _currentUserId.flatMapLatest { id ->
-        if (id.isNullOrBlank()) flowOf(emptyList()) else firestoreRepo.observeUserWithdrawals(id)
+    val userWithdrawals: StateFlow<List<WithdrawalRequestDto>> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeUserWithdrawals(uid)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allWithdrawals: StateFlow<List<WithdrawalRequestDto>> = firestoreRepo.observeAllWithdrawals()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val allWithdrawals: StateFlow<List<WithdrawalRequestDto>> = combine(_currentUserId, isRealAdmin) { uid, isAdmin ->
+        uid to (isAdmin || isUserRealAdmin())
+    }.flatMapLatest { (uid, isAdmin) ->
+        if (!isAdmin || uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeAllWithdrawals()
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val pendingWithdrawalsCount: StateFlow<Int> = allWithdrawals.flatMapLatest { list ->
@@ -274,13 +513,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val selectedAdminSupportUserId: StateFlow<String?> = _selectedAdminSupportUserId.asStateFlow()
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val userSupportThread: StateFlow<SupportThreadDto?> = _currentUserId.flatMapLatest { id ->
-        if (id.isNullOrBlank()) flowOf(null) else firestoreRepo.observeSupportThread(id)
+    val userSupportThread: StateFlow<SupportThreadDto?> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(null)
+        } else {
+            firestoreRepo.observeSupportThread(uid)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val userSupportMessages: StateFlow<List<SupportMessageDto>> = _currentUserId.flatMapLatest { id ->
-        if (id.isNullOrBlank()) flowOf(emptyList()) else firestoreRepo.observeSupportMessages(id)
+    val userSupportMessages: StateFlow<List<SupportMessageDto>> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeSupportMessages(uid)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -288,8 +535,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         flowOf(thread?.unreadByUser ?: 0)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val allSupportThreads: StateFlow<List<SupportThreadDto>> = firestoreRepo.observeAllSupportThreads()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val allSupportThreads: StateFlow<List<SupportThreadDto>> = combine(_currentUserId, isRealAdmin) { uid, isAdmin ->
+        uid to (isAdmin || isUserRealAdmin())
+    }.flatMapLatest { (uid, isAdmin) ->
+        if (!isAdmin || uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeAllSupportThreads()
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val adminUnreadSupportCount: StateFlow<Int> = allSupportThreads.flatMapLatest { threads ->
@@ -297,13 +552,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val selectedAdminSupportThread: StateFlow<SupportThreadDto?> = _selectedAdminSupportUserId.flatMapLatest { uid ->
-        if (uid.isNullOrBlank()) flowOf(null) else firestoreRepo.observeSupportThread(uid)
+    val selectedAdminSupportThread: StateFlow<SupportThreadDto?> = combine(_currentUserId, _selectedAdminSupportUserId) { activeUid, targetUid ->
+        activeUid to targetUid
+    }.flatMapLatest { (activeUid, targetUid) ->
+        if (targetUid.isNullOrBlank() || activeUid.isBlank()) {
+            flowOf(null)
+        } else {
+            firestoreRepo.observeSupportThread(targetUid)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val selectedAdminSupportMessages: StateFlow<List<SupportMessageDto>> = _selectedAdminSupportUserId.flatMapLatest { uid ->
-        if (uid.isNullOrBlank()) flowOf(emptyList()) else firestoreRepo.observeSupportMessages(uid)
+    val selectedAdminSupportMessages: StateFlow<List<SupportMessageDto>> = combine(_currentUserId, _selectedAdminSupportUserId) { activeUid, targetUid ->
+        activeUid to targetUid
+    }.flatMapLatest { (activeUid, targetUid) ->
+        if (targetUid.isNullOrBlank() || activeUid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeSupportMessages(targetUid)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private data class UserNotifFilterState(
@@ -333,11 +600,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val activeNotificationsSource: kotlinx.coroutines.flow.Flow<List<NotificationDto>> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeNotifications()
+        }
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val allNotifications: StateFlow<List<NotificationDto>> = combine(
-        firestoreRepo.observeNotifications(),
+        activeNotificationsSource,
         userNotifFilterState
-    ) { list, filterState ->
-        list.filter { notif ->
+    ) { sourceList, filterState ->
+        sourceList.filter { notif ->
             shouldShowNotificationForUser(
                 notif = notif,
                 uid = filterState.uid,
@@ -359,97 +635,142 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val selectedTournament: StateFlow<TournamentDto?> = _selectedTournamentId.flatMapLatest { id ->
-        if (id.isNullOrBlank()) flowOf(null) else firestoreRepo.observeTournament(id)
+    val selectedTournament: StateFlow<TournamentDto?> = combine(_currentUserId, _selectedTournamentId) { uid, selectedId ->
+        uid to selectedId
+    }.flatMapLatest { (uid, selectedId) ->
+        if (selectedId.isNullOrBlank() || uid.isBlank()) {
+            flowOf(null)
+        } else {
+            firestoreRepo.observeTournament(selectedId)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val selectedTournamentParticipants: StateFlow<List<ParticipantDto>> = _selectedTournamentId.flatMapLatest { id ->
-        if (id.isNullOrBlank()) flowOf(emptyList()) else firestoreRepo.observeParticipants(id)
+    val selectedTournamentParticipants: StateFlow<List<ParticipantDto>> = combine(_currentUserId, _selectedTournamentId) { uid, selectedId ->
+        uid to selectedId
+    }.flatMapLatest { (uid, selectedId) ->
+        if (selectedId.isNullOrBlank() || uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeParticipants(selectedId)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val isRealAdmin: StateFlow<Boolean> = currentUser.flatMapLatest { user ->
-        val currentAuthEmail = FirebaseAuth.getInstance().currentUser?.email
-        val email = user?.email ?: currentAuthEmail ?: ""
-        val isAdminFlag = user?.isAdmin == true
-        flowOf(email.equals("udaynath381@gmail.com", ignoreCase = true) || isAdminFlag)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
     fun isUserRealAdmin(): Boolean {
-        val currentAuthEmail = FirebaseAuth.getInstance().currentUser?.email
-        val userDocEmail = currentUser.value?.email
-        val isDocAdmin = currentUser.value?.isAdmin == true
-        val email = userDocEmail ?: currentAuthEmail ?: ""
-        return email.equals("udaynath381@gmail.com", ignoreCase = true) || isDocAdmin
+        val uid = _currentUserId.value
+        if (uid.isBlank()) return false
+        val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
+            ?: AuthManager.loadSavedSession(getApplication())?.takeIf { it.uid == uid }
+        val currentAuthEmail = FirebaseAuth.getInstance().currentUser?.takeIf { it.uid == uid }?.email
+        val userDoc = currentUser.value
+        val email = userDoc?.email ?: session?.email ?: currentAuthEmail ?: ""
+        val username = userDoc?.username ?: session?.username ?: ""
+        val isDocAdmin = (userDoc?.isAdmin == true) || (session?.isAdmin == true)
+        return AuthManager.isMasterAdminIdentity(email = email, username = username, uid = uid) || isDocAdmin
     }
 
     @Volatile
     private var isWipingData = false
 
     init {
-        val initialUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-        val lastUid = prefs.getString("last_active_uid", "") ?: ""
-        val alreadyWipedV3 = prefs.getBoolean("complete_factory_wipe_v3", false)
+        val savedSession = AuthManager.loadSavedSession(getApplication())
+        prefs.edit().putBoolean("complete_factory_wipe_v3", true).apply()
 
-        if (!alreadyWipedV3) {
-            isWipingData = true
-            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                try {
-                    // 1. Delete all Cloud Firestore collections & subcollections (users, transactions, participations, tournaments, participants, withdrawals, notifications)
-                    firestoreRepo.deleteAllDatabaseData(setOf(initialUid, lastUid))
-                    // 2. Delete local Room SQLite database completely
-                    try {
-                        getApplication<Application>().deleteDatabase("ff_tournament_db")
-                    } catch (_: Exception) {}
-                    // 3. Clear local SharedPreferences and record wipe completion
-                    val currentUidNow = FirebaseAuth.getInstance().currentUser?.uid ?: initialUid
-                    prefs.edit().clear().commit()
-                    val editor = prefs.edit().putBoolean("complete_factory_wipe_v3", true)
-                    if (currentUidNow.isNotBlank()) {
-                        editor.putBoolean("session_wiped_$currentUidNow", true)
-                        editor.putString("last_active_uid", currentUidNow)
-                    }
-                    editor.commit()
-                    syncedUserIds.clear()
-                    _locallyReadNotifIds.value = emptySet()
-                    _locallyClearedNotifIds.value = emptySet()
-                } finally {
-                    isWipingData = false
-                }
-            }
-        } else {
+        val activeSession = savedSession ?: FirebaseAuth.getInstance().currentUser?.let { fbUser ->
+            AuthenticatedSession(
+                uid = fbUser.uid,
+                username = fbUser.displayName ?: fbUser.email?.substringBefore("@") ?: "Player",
+                email = fbUser.email ?: "",
+                isAdmin = AuthManager.isMasterAdminIdentity(email = fbUser.email, username = fbUser.displayName, uid = fbUser.uid)
+            )
+        }
+        if (activeSession != null) {
             viewModelScope.launch {
                 firestoreRepo.cleanupDemoData()
                 firestoreRepo.initAppSettingsIfMissing()
             }
-            _locallyReadNotifIds.value = loadLocalReadNotifs(_currentUserId.value)
-            _locallyClearedNotifIds.value = loadLocalClearedNotifs(_currentUserId.value)
-            val authUser = FirebaseAuth.getInstance().currentUser
-            if (authUser != null && !prefs.getBoolean("session_wiped_${authUser.uid}", false)) {
-                onUserAuthenticated(authUser, isExplicitSignIn = false)
-            }
+        }
+        _locallyReadNotifIds.value = loadLocalReadNotifs(_currentUserId.value)
+        _locallyClearedNotifIds.value = loadLocalClearedNotifs(_currentUserId.value)
+        if (activeSession != null) {
+            onSessionAuthenticated(activeSession, isExplicitSignIn = false)
         }
 
         val appStartTime = System.currentTimeMillis()
 
-        // Sync active user ID and background sync scheduling
+        // Sync active user ID and background sync scheduling (only for real authenticated users)
         viewModelScope.launch {
             _currentUserId.collect { uid ->
-                if (uid.isNotBlank()) {
+                if (uid.isNotBlank() && !uid.startsWith("demo_")) {
                     prefs.edit().putString("last_active_uid", uid).apply()
                     com.example.notification.NotificationBackgroundManager.scheduleBackgroundSync(getApplication())
                 }
             }
         }
 
-        // Sync joined tournament IDs to SharedPreferences for background notification targeting
+        // Sync joined tournament IDs to SharedPreferences, subscribe to FCM topics, and schedule 10-minute pre-match reminders
         viewModelScope.launch {
-            userParticipations.collect { participations ->
-                val uid = _currentUserId.value
-                if (uid.isNotBlank()) {
+            combine(_currentUserId, userParticipations, allTournaments) { uid, participations, tournaments ->
+                Triple(uid, participations, tournaments)
+            }.collect { (uid, participations, tournaments) ->
+                if (uid.isNotBlank() && !uid.startsWith("demo_")) {
                     val joinedIds = participations.map { it.tournamentId }.filter { it.isNotBlank() }.toSet()
                     prefs.edit().putStringSet("joined_tournaments_$uid", joinedIds).apply()
+                    com.example.notification.TournamentFirebaseMessagingService.syncTokenAndTopicsForUser(
+                        context = getApplication(),
+                        userId = uid,
+                        joinedTournamentIds = joinedIds
+                    )
+                    com.example.notification.NotificationBackgroundManager.scheduleTournamentTenMinuteReminders(
+                        context = getApplication(),
+                        userId = uid,
+                        tournaments = tournaments,
+                        joinedTournamentIds = joinedIds
+                    )
+                }
+            }
+        }
+
+        // Active 30-second countdown monitor for 10-minute pre-tournament reminders while app is open
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(30_000L)
+                val uid = _currentUserId.value
+                if (uid.isNotBlank() && !uid.startsWith("demo_")) {
+                    val joinedIds = userParticipations.value.map { it.tournamentId }.filter { it.isNotBlank() }.toSet()
+                    if (joinedIds.isNotEmpty()) {
+                        val now = System.currentTimeMillis()
+                        val upcomingJoined = allTournaments.value.filter { t ->
+                            joinedIds.contains(t.id) && t.status.equals("UPCOMING", ignoreCase = true)
+                        }
+                        for (tournament in upcomingJoined) {
+                            val startMs = com.example.notification.NotificationBackgroundManager.resolveTournamentStartEpochMs(tournament)
+                            val timeUntilStart = startMs - now
+                            val reminderKey = "reminded_10m_${uid}_${tournament.id}"
+                            if (startMs > 0L &&
+                                timeUntilStart in 1L..com.example.notification.NotificationBackgroundManager.TEN_MINUTES_MS &&
+                                !prefs.getBoolean(reminderKey, false)
+                            ) {
+                                com.example.notification.NotificationBackgroundManager.dispatchTenMinuteReminder(
+                                    context = getApplication(),
+                                    userId = uid,
+                                    tournamentId = tournament.id,
+                                    tournamentTitle = tournament.title,
+                                    matchType = tournament.matchType,
+                                    mapName = tournament.map
+                                )
+                                _liveAlert.emit(
+                                    UiNotificationAlert(
+                                        id = "NOTIF-10M-${tournament.id.takeLast(8).uppercase()}",
+                                        title = "⏰ Match Starts in 10 Minutes!",
+                                        message = "${tournament.title} (${tournament.matchType} • ${tournament.map}) starts in 10 minutes! Check Lobby for Room ID & Password.",
+                                        roomId = tournament.roomId,
+                                        roomPass = tournament.roomPassword
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -515,25 +836,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun onUserAuthenticated(user: com.google.firebase.auth.FirebaseUser, isExplicitSignIn: Boolean = false) {
-        _currentUserId.value = user.uid
-        if (isWipingData || !prefs.getBoolean("complete_factory_wipe_v3", false)) {
+    fun onSessionAuthenticated(session: AuthenticatedSession, isExplicitSignIn: Boolean = false) {
+        _currentUserId.value = session.uid
+        if (session.ffIgn.isNotBlank() || session.ffUid.isNotBlank()) {
+            val curOpt = _optimisticUserOverride.value?.takeIf { it.id == session.uid }
+            _optimisticUserOverride.value = (curOpt ?: buildSessionFallbackUser(session.uid))?.copy(
+                id = session.uid,
+                ffIgn = session.ffIgn.ifBlank { curOpt?.ffIgn ?: "" },
+                ffUid = session.ffUid.ifBlank { curOpt?.ffUid ?: "" }
+            )
+        }
+        if (isWipingData) {
             return
         }
-        if (isExplicitSignIn) {
-            prefs.edit().remove("session_wiped_${user.uid}").commit()
-        } else if (prefs.getBoolean("session_wiped_${user.uid}", false)) {
-            // Session data was intentionally wiped; do not auto-recreate user document until explicit action
-            return
-        }
+        prefs.edit().remove("session_wiped_${session.uid}").commit()
 
-        _locallyReadNotifIds.value = loadLocalReadNotifs(user.uid)
-        _locallyClearedNotifIds.value = loadLocalClearedNotifs(user.uid)
-        val syncKey = "user_synced_${user.uid}"
-        val alreadySynced = prefs.getBoolean(syncKey, false)
-        if (!syncedUserIds.add(user.uid) && alreadySynced && !isExplicitSignIn) {
-            return
-        }
+        _locallyReadNotifIds.value = loadLocalReadNotifs(session.uid)
+        _locallyClearedNotifIds.value = loadLocalClearedNotifs(session.uid)
 
         val deviceId = try {
             android.provider.Settings.Secure.getString(
@@ -545,20 +864,44 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            val isUserAdmin = user.email.equals("udaynath381@gmail.com", ignoreCase = true)
-            firestoreRepo.syncUserProfile(
-                userId = user.uid,
-                email = user.email ?: "",
-                displayName = user.displayName ?: "Player",
+            val isUserAdmin = AuthManager.isMasterAdminIdentity(
+                email = session.email,
+                username = session.username,
+                uid = session.uid
+            ) || session.isAdmin
+            val syncedUser = firestoreRepo.syncUserProfile(
+                userId = session.uid,
+                email = session.email,
+                displayName = session.username.ifBlank { "Player" },
                 isAdmin = isUserAdmin,
-                deviceId = deviceId
+                deviceId = deviceId,
+                ffIgn = session.ffIgn,
+                ffUid = session.ffUid,
+                passwordHash = session.passwordHash
             )
-            prefs.edit().putBoolean(syncKey, true).commit()
+            if (syncedUser.ffIgn.isNotBlank() || syncedUser.ffUid.isNotBlank()) {
+                AuthManager.updateSessionGamingProfile(
+                    context = getApplication(),
+                    ffIgn = syncedUser.ffIgn,
+                    ffUid = syncedUser.ffUid
+                )
+            }
+            prefs.edit().putBoolean("user_synced_${session.uid}", true).commit()
             firestoreRepo.initAppSettingsIfMissing()
             if (isExplicitSignIn) {
-                _toastMessage.emit("Signed in as ${user.displayName ?: user.email}")
+                _toastMessage.emit("Signed in as ${session.username.ifBlank { session.email }}")
             }
         }
+    }
+
+    fun onUserAuthenticated(user: com.google.firebase.auth.FirebaseUser, isExplicitSignIn: Boolean = false) {
+        val session = AuthenticatedSession(
+            uid = user.uid,
+            username = user.displayName ?: user.email?.substringBefore("@") ?: "Player",
+            email = user.email ?: "",
+            isAdmin = AuthManager.isMasterAdminIdentity(email = user.email, username = user.displayName, uid = user.uid)
+        )
+        onSessionAuthenticated(session, isExplicitSignIn)
     }
 
     fun navigateTo(screen: Screen) {
@@ -573,7 +916,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 screen is Screen.AdminSupportChat ||
                 screen is Screen.AdminAuth
         if (isAdminScreen && !isUserRealAdmin()) {
-            showToast("Access Denied: Only udaynath381@gmail.com is authorized as Admin.")
+            showToast("Access Denied: Only authorized Admin accounts can access the Admin Portal.")
             return
         }
         if (_currentScreen.value != screen) {
@@ -717,6 +1060,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         amount: Int,
         upiId: String,
         accountHolderName: String,
+        saveUpiId: Boolean = true,
         onComplete: (Boolean, String) -> Unit = { _, _ -> }
     ) {
         val uid = _currentUserId.value
@@ -724,8 +1068,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             onComplete(false, "Please sign in to withdraw balance.")
             return
         }
+        val cleanUpi = upiId.trim()
+        if (saveUpiId && cleanUpi.isNotBlank()) {
+            val user = currentUser.value
+            if (user != null) {
+                _optimisticUserOverride.value = user.copy(savedUpiId = cleanUpi)
+            }
+        }
         viewModelScope.launch {
-            val res = firestoreRepo.requestWithdrawal(uid, amount, upiId, accountHolderName)
+            val res = firestoreRepo.requestWithdrawal(
+                userId = uid,
+                amount = amount,
+                upiId = cleanUpi,
+                accountHolderName = accountHolderName,
+                saveUpiId = saveUpiId
+            )
             res.fold(
                 onSuccess = { req ->
                     _toastMessage.emit("Withdrawal request of ₹${req.amount} submitted successfully! ⏳")
@@ -733,6 +1090,40 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 },
                 onFailure = { err ->
                     val msg = err.message ?: "Failed to submit withdrawal request."
+                    _toastMessage.emit(msg)
+                    onComplete(false, msg)
+                }
+            )
+        }
+    }
+
+    // User: Save or Update Saved UPI ID for future withdrawals
+    fun saveUserUpiId(upiId: String, onComplete: (Boolean, String) -> Unit = { _, _ -> }) {
+        val uid = _currentUserId.value
+        if (uid.isBlank()) {
+            onComplete(false, "Please sign in to save UPI ID")
+            return
+        }
+        val cleanUpi = upiId.trim()
+        if (!cleanUpi.contains("@") || cleanUpi.length < 5) {
+            val msg = "Please enter a valid UPI ID (e.g. yourname@upi)"
+            showToast(msg)
+            onComplete(false, msg)
+            return
+        }
+        val user = currentUser.value
+        if (user != null) {
+            _optimisticUserOverride.value = user.copy(savedUpiId = cleanUpi)
+        }
+        viewModelScope.launch {
+            val res = firestoreRepo.saveUserUpiId(uid, cleanUpi)
+            res.fold(
+                onSuccess = { msg ->
+                    _toastMessage.emit(msg)
+                    onComplete(true, msg)
+                },
+                onFailure = { err ->
+                    val msg = err.message ?: "Failed to save UPI ID"
                     _toastMessage.emit(msg)
                     onComplete(false, msg)
                 }
@@ -836,20 +1227,50 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun joinTournament(tournamentId: String, ign: String, uid: String, chosenSlot: Int? = null) {
         viewModelScope.launch {
             val user = currentUser.value
-            val userId = user?.id ?: _currentUserId.value
+            val userId = user?.id?.takeIf { it.isNotBlank() }
+                ?: _currentUserId.value.ifBlank {
+                    AuthManager.currentSession()?.uid
+                        ?: FirebaseAuth.getInstance().currentUser?.uid
+                        ?: ""
+                }
             if (userId.isBlank()) {
                 _toastMessage.emit("Please sign in to register")
                 return@launch
             }
+            val cleanIgn = ign.trim()
+            val cleanUid = uid.trim()
+            if (cleanIgn.isNotBlank() || cleanUid.isNotBlank()) {
+                AuthManager.updateSessionGamingProfile(getApplication(), cleanIgn, cleanUid)
+                val baseUser = user ?: buildSessionFallbackUser(userId) ?: UserDto(id = userId)
+                _optimisticUserOverride.value = baseUser.copy(
+                    id = userId,
+                    ffIgn = cleanIgn.ifBlank { baseUser.ffIgn },
+                    ffUid = cleanUid.ifBlank { baseUser.ffUid }
+                )
+            }
             val res = firestoreRepo.joinTournament(
                 tournamentId = tournamentId,
                 userId = userId,
-                ffIgn = ign,
-                ffUid = uid,
-                username = user?.username ?: ign,
+                ffIgn = cleanIgn,
+                ffUid = cleanUid,
+                username = user?.username?.ifBlank { cleanIgn } ?: cleanIgn,
                 chosenSlot = chosenSlot
             )
             res.onSuccess { msg ->
+                val bookedSlot = Regex("Slot #(\\d+)").find(msg)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                    ?: chosenSlot
+                    ?: 1
+                val tournament = allTournaments.value.firstOrNull { it.id == tournamentId }
+                    ?: selectedTournament.value
+                _registrationSuccessEvent.value = RegistrationSuccessEvent(
+                    tournamentId = tournamentId,
+                    tournamentTitle = tournament?.title ?: "Free Fire Custom Match",
+                    slotNumber = bookedSlot,
+                    entryFee = tournament?.entryFee ?: 0,
+                    matchType = tournament?.matchType ?: "SOLO",
+                    mapName = tournament?.map ?: "Bermuda",
+                    playerIgn = cleanIgn
+                )
                 _toastMessage.emit(msg)
                 _liveAlert.emit(UiNotificationAlert("Match Joined! 🎯", msg))
             }.onFailure { err ->
@@ -859,15 +1280,66 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateGamingProfile(ign: String, uid: String) {
+        val user = currentUser.value
+        val userId = user?.id?.takeIf { it.isNotBlank() }
+            ?: _currentUserId.value.ifBlank {
+                AuthManager.currentSession()?.uid
+                    ?: AuthManager.loadSavedSession(getApplication())?.uid
+                    ?: FirebaseAuth.getInstance().currentUser?.uid
+                    ?: ""
+            }
+        if (userId.isBlank()) {
+            showToast("Please sign in to update profile")
+            return
+        }
+        val cleanIgn = ign.trim().ifBlank { user?.ffIgn ?: "" }
+        val cleanUid = uid.trim().ifBlank { user?.ffUid ?: "" }
+
+        // Immediately update local session and optimistic state so UI reflects change at 0ms latency
+        AuthManager.updateSessionGamingProfile(getApplication(), cleanIgn, cleanUid)
+        val baseUser = user ?: buildSessionFallbackUser(userId) ?: UserDto(id = userId)
+        _optimisticUserOverride.value = baseUser.copy(
+            id = userId,
+            ffIgn = cleanIgn,
+            ffUid = cleanUid
+        )
+
         viewModelScope.launch {
-            val user = currentUser.value
-            val userId = user?.id ?: _currentUserId.value
-            if (userId.isBlank()) return@launch
-            val res = firestoreRepo.updateUserGamingProfile(userId, ign, uid)
+            val res = firestoreRepo.updateUserGamingProfile(userId, cleanIgn, cleanUid)
             res.onSuccess { msg ->
                 _toastMessage.emit(msg)
             }.onFailure { err ->
-                _toastMessage.emit(err.message ?: "Failed to update profile")
+                _toastMessage.emit(err.message ?: "Saved locally; cloud sync pending")
+            }
+        }
+    }
+
+    fun adminUpdateUserGamingProfile(targetUserId: String, ign: String, uid: String) {
+        if (!isUserRealAdmin()) {
+            showToast("Admin permission required.")
+            return
+        }
+        val cleanIgn = ign.trim()
+        val cleanUid = uid.trim()
+        val existingTarget = allUsers.value.firstOrNull { it.id == targetUserId }
+            ?: currentUser.value?.takeIf { it.id == targetUserId }
+            ?: buildSessionFallbackUser(targetUserId)
+            ?: UserDto(id = targetUserId)
+        if (targetUserId == _currentUserId.value) {
+            AuthManager.updateSessionGamingProfile(getApplication(), cleanIgn, cleanUid)
+        }
+        _optimisticUserOverride.value = existingTarget.copy(
+            id = targetUserId,
+            ffIgn = cleanIgn,
+            ffUid = cleanUid
+        )
+
+        viewModelScope.launch {
+            val res = firestoreRepo.updateUserGamingProfile(targetUserId, cleanIgn, cleanUid)
+            res.onSuccess {
+                _toastMessage.emit("Updated player IGN & UID!")
+            }.onFailure { err ->
+                _toastMessage.emit(err.message ?: "Failed to update player profile")
             }
         }
     }
@@ -1136,9 +1608,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun broadcastCustomNotification(title: String, message: String) {
+    fun broadcastCustomNotification(
+        title: String,
+        message: String,
+        type: String = "ANNOUNCEMENT",
+        targetUserId: String? = null,
+        targetTournamentId: String? = null,
+        roomId: String? = null,
+        roomPassword: String? = null
+    ) {
         viewModelScope.launch {
-            val res = firestoreRepo.broadcastNotification(title, message, "ANNOUNCEMENT")
+            val res = firestoreRepo.broadcastNotification(
+                title = title,
+                message = message,
+                type = type,
+                targetUserId = targetUserId,
+                targetTournamentId = targetTournamentId,
+                roomId = roomId,
+                roomPassword = roomPassword
+            )
             res.onSuccess { msg ->
                 _toastMessage.emit(msg)
                 PushNotificationHelper.showPushNotification(
@@ -1146,9 +1634,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     notificationId = System.currentTimeMillis().toInt(),
                     title = title,
                     message = message,
-                    type = "ANNOUNCEMENT"
+                    type = type
                 )
-                _liveAlert.emit(UiNotificationAlert(title, message))
+                _liveAlert.emit(
+                    UiNotificationAlert(
+                        title = title,
+                        message = message,
+                        roomId = roomId,
+                        roomPass = roomPassword
+                    )
+                )
             }.onFailure { err ->
                 _toastMessage.emit(err.message ?: "Broadcast failed")
             }

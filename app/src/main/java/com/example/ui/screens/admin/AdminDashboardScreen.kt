@@ -80,6 +80,7 @@ import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastBorder
 import com.example.ui.theme.HighContrastDark
 import com.example.ui.theme.LiveRed
+import com.example.data.firestore.TournamentDto
 import com.example.ui.theme.SlateCardBg
 import com.example.ui.theme.SlateLightBg
 import com.example.ui.theme.SlateMutedBorder
@@ -273,8 +274,8 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
 
                     // User Management & Balances
                     AdminActionCard(
-                        title = "User & Wallet Management",
-                        subtitle = "View player UIDs, adjust wallet balance, and toggle suspensions",
+                        title = if (users.isNotEmpty()) "User & Wallet Management (${users.size} Players)" else "User & Wallet Management",
+                        subtitle = "View player UIDs, edit Free Fire IGN & UID, adjust wallet balance, and toggle suspensions",
                         icon = Icons.Default.ManageAccounts,
                         accentColor = Color(0xFF3B82F6),
                         onClick = { viewModel.navigateTo(Screen.AdminUsers) },
@@ -331,9 +332,18 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
 
     if (showBroadcastDialog) {
         BroadcastNotificationModal(
+            tournaments = tournaments,
             onDismiss = { showBroadcastDialog = false },
-            onBroadcast = { title, msg ->
-                viewModel.broadcastCustomNotification(title, msg)
+            onBroadcast = { title, msg, type, targetUid, targetTid, roomId, roomPass ->
+                viewModel.broadcastCustomNotification(
+                    title = title,
+                    message = msg,
+                    type = type,
+                    targetUserId = targetUid,
+                    targetTournamentId = targetTid,
+                    roomId = roomId,
+                    roomPassword = roomPass
+                )
                 showBroadcastDialog = false
             }
         )
@@ -464,11 +474,25 @@ fun AdminActionCard(
 
 @Composable
 fun BroadcastNotificationModal(
+    tournaments: List<TournamentDto> = emptyList(),
     onDismiss: () -> Unit,
-    onBroadcast: (title: String, message: String) -> Unit
+    onBroadcast: (
+        title: String,
+        message: String,
+        type: String,
+        targetUserId: String?,
+        targetTournamentId: String?,
+        roomId: String?,
+        roomPassword: String?
+    ) -> Unit
 ) {
     var titleInput by remember { mutableStateOf("Tournament Room Update 🚨") }
-    var messageInput by remember { mutableStateOf("Match is starting in 15 minutes! Please check Room ID & Password.") }
+    var messageInput by remember { mutableStateOf("Match starts in 10 minutes! Check Lobby for Room ID & Password.") }
+    var targetMode by remember { mutableStateOf("ALL") } // "ALL", "TOURNAMENT", "USER"
+    var selectedTournamentId by remember { mutableStateOf(tournaments.firstOrNull()?.id ?: "") }
+    var targetUserIdInput by remember { mutableStateOf("") }
+    var roomIdInput by remember { mutableStateOf("") }
+    var roomPasswordInput by remember { mutableStateOf("") }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -484,11 +508,10 @@ fun BroadcastNotificationModal(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
-                    .clickable(enabled = false) {}
-                    .clip(RoundedCornerShape(24.dp)),
+                    .clickable(enabled = false) {},
                 shape = RoundedCornerShape(24.dp),
                 color = SlateCardBg,
-                border = BorderStroke(1.dp, SlateMutedBorder),
+                border = BorderStroke(1.2.dp, SlateMutedBorder),
                 shadowElevation = 16.dp
             ) {
                 Column(
@@ -531,13 +554,13 @@ fun BroadcastNotificationModal(
                                 }
                                 Column {
                                     Text(
-                                        text = "Broadcast Live Alert",
+                                        text = "Send Custom Push Notification",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
+                                        fontSize = 15.sp,
                                         color = Color.White
                                     )
                                     Text(
-                                        text = "Dispatches In-App Banner & Push",
+                                        text = "Dispatches In-App Banner & FCM Push",
                                         fontSize = 11.sp,
                                         color = Color(0xFF94A3B8)
                                     )
@@ -578,7 +601,10 @@ fun BroadcastNotificationModal(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    ) {
                                         Icon(
                                             imageVector = Icons.Default.Campaign,
                                             contentDescription = null,
@@ -590,19 +616,29 @@ fun BroadcastNotificationModal(
                                             text = titleInput.ifBlank { "Alert Title" },
                                             color = Color.White,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp
+                                            fontSize = 12.sp,
+                                            maxLines = 1
                                         )
                                     }
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Surface(
-                                        color = LiveRed,
+                                        color = when (targetMode) {
+                                            "TOURNAMENT" -> FireOrange
+                                            "USER" -> Color(0xFF0284C7)
+                                            else -> LiveRed
+                                        },
                                         shape = RoundedCornerShape(4.dp)
                                     ) {
                                         Text(
-                                            text = "LIVE BANNER",
+                                            text = when (targetMode) {
+                                                "TOURNAMENT" -> "MATCH PLAYERS"
+                                                "USER" -> "DIRECT USER"
+                                                else -> "ALL PLAYERS"
+                                            },
                                             color = Color.White,
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
@@ -612,6 +648,195 @@ fun BroadcastNotificationModal(
                                     color = Color(0xFFE2E8F0),
                                     fontSize = 11.sp,
                                     lineHeight = 15.sp
+                                )
+                                if (roomIdInput.isNotBlank() || roomPasswordInput.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (roomIdInput.isNotBlank()) {
+                                            Surface(
+                                                color = Color(0xFF0F172A),
+                                                shape = RoundedCornerShape(4.dp),
+                                                border = BorderStroke(0.8.dp, FireOrange.copy(alpha = 0.5f))
+                                            ) {
+                                                Text(
+                                                    text = "Room ID: $roomIdInput",
+                                                    fontSize = 10.sp,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        if (roomPasswordInput.isNotBlank()) {
+                                            Surface(
+                                                color = Color(0xFF0F172A),
+                                                shape = RoundedCornerShape(4.dp),
+                                                border = BorderStroke(0.8.dp, FireOrange.copy(alpha = 0.5f))
+                                            ) {
+                                                Text(
+                                                    text = "Pass: $roomPasswordInput",
+                                                    fontSize = 10.sp,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Target Audience Segment
+                        Text(
+                            text = "Target Audience",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = TextPrimaryDark
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(
+                                "ALL" to "All Players",
+                                "TOURNAMENT" to "By Match",
+                                "USER" to "Single User"
+                            ).forEach { (mode, label) ->
+                                val isSelected = targetMode == mode
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) FireOrange.copy(alpha = 0.2f) else Color.Transparent,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) FireOrange else SlateMutedBorder
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { targetMode = mode }
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) FireOrange else TextPrimaryDark
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Specific Tournament Selection
+                        if (targetMode == "TOURNAMENT") {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = "Select Tournament",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimaryDark
+                                )
+                                if (tournaments.isNotEmpty()) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        tournaments.take(5).forEach { tourney ->
+                                            val isTourneySelected = selectedTournamentId == tourney.id
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isTourneySelected) FireOrange.copy(alpha = 0.15f) else Color.Transparent,
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (isTourneySelected) FireOrange else SlateMutedBorder
+                                                ),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        selectedTournamentId = tourney.id
+                                                        tourney.roomId?.takeIf { it.isNotBlank() }?.let { roomIdInput = it }
+                                                        tourney.roomPassword?.takeIf { it.isNotBlank() }?.let { roomPasswordInput = it }
+                                                    }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = tourney.title,
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = TextPrimaryDark,
+                                                            maxLines = 1
+                                                        )
+                                                        Text(
+                                                            text = "${tourney.matchType} • ${tourney.scheduleTime}",
+                                                            fontSize = 10.sp,
+                                                            color = Color(0xFF94A3B8)
+                                                        )
+                                                    }
+                                                    if (isTourneySelected) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.CheckCircle,
+                                                            contentDescription = null,
+                                                            tint = FireOrange,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = selectedTournamentId,
+                                    onValueChange = { selectedTournamentId = it },
+                                    label = { Text("Tournament ID") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        // Specific User UID Input
+                        if (targetMode == "USER") {
+                            OutlinedTextField(
+                                value = targetUserIdInput,
+                                onValueChange = { targetUserIdInput = it },
+                                label = { Text("Target Player UID") },
+                                placeholder = { Text("Enter user Firebase UID") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        // Optional Room Credentials
+                        if (targetMode == "TOURNAMENT") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = roomIdInput,
+                                    onValueChange = { roomIdInput = it },
+                                    label = { Text("Room ID (Optional)") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = roomPasswordInput,
+                                    onValueChange = { roomPasswordInput = it },
+                                    label = { Text("Room Pass (Optional)") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
                         }
@@ -655,7 +880,25 @@ fun BroadcastNotificationModal(
                             Button(
                                 onClick = {
                                     if (titleInput.isNotBlank() && messageInput.isNotBlank()) {
-                                        onBroadcast(titleInput.trim(), messageInput.trim())
+                                        val type = if (roomIdInput.isNotBlank() || roomPasswordInput.isNotBlank()) {
+                                            "ROOM_CREDENTIALS"
+                                        } else {
+                                            "ANNOUNCEMENT"
+                                        }
+                                        val targetUid = if (targetMode == "USER") targetUserIdInput.trim().takeIf { it.isNotBlank() } else null
+                                        val targetTid = if (targetMode == "TOURNAMENT") selectedTournamentId.trim().takeIf { it.isNotBlank() } else null
+                                        val room = roomIdInput.trim().takeIf { it.isNotBlank() }
+                                        val pass = roomPasswordInput.trim().takeIf { it.isNotBlank() }
+
+                                        onBroadcast(
+                                            titleInput.trim(),
+                                            messageInput.trim(),
+                                            type,
+                                            targetUid,
+                                            targetTid,
+                                            room,
+                                            pass
+                                        )
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
