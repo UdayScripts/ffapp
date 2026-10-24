@@ -494,8 +494,12 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Attach Photo Button
+                    // Attach Photo Button (High-Contrast Visibility & Proper Surface Shape)
                     Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = HighContrastDark,
+                        border = BorderStroke(1.5.dp, FireOrange),
+                        shadowElevation = 3.dp,
                         modifier = Modifier
                             .size(48.dp)
                             .clip(RoundedCornerShape(14.dp))
@@ -504,11 +508,12 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
                             }
-                            .testTag("attach_photo_button"),
-                        color = FireOrange.copy(alpha = 0.14f),
-                        border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.45f))
+                            .testTag("attach_photo_button")
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.AddPhotoAlternate,
                                 contentDescription = "Attach Photo",
@@ -525,14 +530,18 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                         onValueChange = { messageInput = it },
                         placeholder = {
                             Text(
-                                text = "Write a message or attach screenshot...",
+                                text = "Write a message or attach photo...",
                                 fontSize = 13.sp,
-                                color = TextSecondaryMuted
+                                color = TextSecondaryMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         },
                         maxLines = 4,
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimaryDark,
+                            unfocusedTextColor = TextPrimaryDark,
                             focusedBorderColor = FireOrange,
                             unfocusedBorderColor = SlateMutedBorder,
                             focusedContainerColor = SlateSubtle,
@@ -547,6 +556,13 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (canSend) FireOrange else HighContrastDark.copy(alpha = 0.85f),
+                        border = BorderStroke(
+                            width = 1.5.dp,
+                            color = if (canSend) FireOrangeDark else SlateMutedBorder
+                        ),
+                        shadowElevation = if (canSend) 4.dp else 1.dp,
                         modifier = Modifier
                             .size(48.dp)
                             .scale(sendScale)
@@ -566,11 +582,12 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                                     }
                                 }
                             }
-                            .testTag("send_support_message_button"),
-                        color = if (canSend) FireOrange else SlateSubtle,
-                        border = BorderStroke(1.dp, if (canSend) FireOrangeDark else SlateMutedBorder)
+                            .testTag("send_support_message_button")
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             if (isSending) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
@@ -581,7 +598,7 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.Send,
                                     contentDescription = "Send Message",
-                                    tint = if (canSend) Color.White else TextSecondaryMuted,
+                                    tint = if (canSend) Color.White else Color(0xFFCBD5E1),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }

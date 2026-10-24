@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.SupportAgent
@@ -54,6 +55,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
@@ -98,6 +100,16 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
     val tournaments by viewModel.allTournaments.collectAsStateWithLifecycle()
     val users by viewModel.allUsers.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val isMainAdmin by viewModel.isMainAdmin.collectAsStateWithLifecycle()
+    val currentStaff by viewModel.currentStaffMember.collectAsStateWithLifecycle()
+    val staffMembers by viewModel.staffMembers.collectAsStateWithLifecycle()
+
+    val canMatch = isMainAdmin || (currentStaff?.let { it.isActive && it.canCreateMatch } ?: true)
+    val canBalance = isMainAdmin || (currentStaff?.let { it.isActive && it.canManageBalance } ?: true)
+    val canSupport = isMainAdmin || (currentStaff?.let { it.isActive && it.canManageSupport } ?: true)
+    val canBroadcast = isMainAdmin || (currentStaff?.let { it.isActive && it.canBroadcast } ?: true)
+    val canWithdrawals = isMainAdmin || (currentStaff?.let { it.isActive && it.canManageWithdrawals } ?: true)
+    val canSettings = isMainAdmin || (currentStaff?.let { it.isActive && it.canManageSettings } ?: true)
 
     var showBroadcastDialog by remember { mutableStateOf(false) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
@@ -108,6 +120,7 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
 
     val pendingWithdrawals by viewModel.pendingWithdrawalsCount.collectAsStateWithLifecycle()
     val unreadSupportChats by viewModel.adminUnreadSupportCount.collectAsStateWithLifecycle()
+    val activeStaffCount = staffMembers.count { it.isActive }
 
     Scaffold(
         topBar = {
@@ -145,9 +158,14 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                                 color = TextPrimaryDark
                             )
                             Text(
-                                text = "Organizer: ${currentUser?.username ?: "Admin"}",
+                                text = if (isMainAdmin) {
+                                    "Main Admin: ${currentUser?.username ?: "Uday"} (Full Access)"
+                                } else {
+                                    "Staff (${currentStaff?.roleTitle ?: "Moderator"}): ${currentUser?.username ?: "Staff"}"
+                                },
                                 fontSize = 10.sp,
-                                color = TextSecondaryMuted
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isMainAdmin) FireOrangeDark else Color(0xFF0EA5E9)
                             )
                         }
                     }
@@ -196,13 +214,38 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
             item {
                 HighContrastCard {
                     Column {
-                        Text(
-                            text = "TOURNAMENT PLATFORM METRICS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = FireOrange,
-                            letterSpacing = 1.sp
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "TOURNAMENT PLATFORM METRICS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = FireOrange,
+                                letterSpacing = 0.8.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = if (isMainAdmin) FireOrange.copy(alpha = 0.22f) else Color(0xFF0EA5E9).copy(alpha = 0.22f),
+                                border = BorderStroke(1.dp, if (isMainAdmin) FireOrange else Color(0xFF38BDF8)),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = if (isMainAdmin) "● MAIN ADMIN" else "● STAFF (${currentStaff?.roleTitle?.uppercase() ?: "MOD"})",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isMainAdmin) FireOrange else Color(0xFF38BDF8),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
@@ -214,6 +257,39 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                             MetricItem("LIVE MATCHES", "$liveCount", Icons.Default.LocalFireDepartment, LiveRed)
                             MetricItem("PLAYERS", "${users.size}", Icons.Default.Group, Color(0xFF60A5FA))
                             MetricItem("PRIZE POOL", "₹$totalPrize", Icons.Default.EmojiEvents, TrophyGold)
+                        }
+                    }
+                }
+            }
+
+            // Staff Role Permission Notice (shown when logged in as a Staff member)
+            if (!isMainAdmin && currentStaff != null) {
+                item {
+                    val activePerms = currentStaff?.activePermissionLabels().orEmpty()
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = SlateCardBg),
+                        border = BorderStroke(1.dp, Color(0xFF0EA5E9).copy(alpha = 0.6f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = "Your Assigned Staff Permissions (${activePerms.size}/6 Active)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextPrimaryDark
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (activePerms.isNotEmpty()) {
+                                    "Allowed by Main Admin: ${activePerms.joinToString(" • ")}"
+                                } else {
+                                    "No permissions currently enabled. Contact Main Admin to enable options."
+                                },
+                                fontSize = 11.sp,
+                                color = TextSecondaryMuted,
+                                lineHeight = 16.sp
+                            )
                         }
                     }
                 }
@@ -232,12 +308,29 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
             // Grid Cards for Modules
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Staff & Role Permission Manager (Main Admin Control)
+                    if (isMainAdmin) {
+                        AdminActionCard(
+                            title = if (staffMembers.isNotEmpty()) {
+                                "Staff & Permission Manager ($activeStaffCount/${staffMembers.size} Active)"
+                            } else {
+                                "Staff & Permission Manager"
+                            },
+                            subtitle = "Add staff, edit roles & enable/disable Create Match, Balance, Support, Broadcast & Withdrawals",
+                            icon = Icons.Default.Security,
+                            accentColor = Color(0xFFEC4899),
+                            onClick = { viewModel.navigateTo(Screen.AdminStaff) },
+                            tag = "admin_menu_staff"
+                        )
+                    }
+
                     // Manage Tournaments
                     AdminActionCard(
                         title = "Tournament Manager",
                         subtitle = "Create, edit, cancel matches, and publish Room ID & Password",
                         icon = Icons.Default.SportsEsports,
                         accentColor = FireOrange,
+                        isLocked = !canMatch,
                         onClick = { viewModel.navigateTo(Screen.AdminTournaments) },
                         tag = "admin_menu_tournaments"
                     )
@@ -248,6 +341,7 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                         subtitle = "Input kills, set player ranks, and automatically pay out winnings to user wallets",
                         icon = Icons.Default.EmojiEvents,
                         accentColor = TrophyGold,
+                        isLocked = !canMatch,
                         onClick = { viewModel.navigateTo(Screen.AdminSettlement) },
                         tag = "admin_menu_settlement"
                     )
@@ -258,6 +352,7 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                         subtitle = "Review player winning withdrawal requests, accept & mark paid, or reject with instant refund",
                         icon = Icons.Default.Payments,
                         accentColor = SuccessGreen,
+                        isLocked = !canWithdrawals,
                         onClick = { viewModel.navigateTo(Screen.AdminWithdrawals) },
                         tag = "admin_menu_withdrawals"
                     )
@@ -268,6 +363,7 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                         subtitle = "Chat with players in real time, inspect payment/match screenshots, and send photo replies",
                         icon = Icons.Default.SupportAgent,
                         accentColor = Color(0xFF0EA5E9),
+                        isLocked = !canSupport,
                         onClick = { viewModel.navigateTo(Screen.AdminSupportInbox) },
                         tag = "admin_menu_support_inbox"
                     )
@@ -278,6 +374,7 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                         subtitle = "View player UIDs, edit Free Fire IGN & UID, adjust wallet balance, and toggle suspensions",
                         icon = Icons.Default.ManageAccounts,
                         accentColor = Color(0xFF3B82F6),
+                        isLocked = !canBalance,
                         onClick = { viewModel.navigateTo(Screen.AdminUsers) },
                         tag = "admin_menu_users"
                     )
@@ -288,7 +385,14 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
                         subtitle = "Send instant notifications & custom room alerts to all players",
                         icon = Icons.Default.Campaign,
                         accentColor = Color(0xFF10B981),
-                        onClick = { showBroadcastDialog = true },
+                        isLocked = !canBroadcast,
+                        onClick = {
+                            if (canBroadcast) {
+                                showBroadcastDialog = true
+                            } else {
+                                viewModel.showToast("Permission Denied: 'Broadcast Alerts' is disabled for your staff role.")
+                            }
+                        },
                         tag = "admin_menu_broadcast"
                     )
 
@@ -304,23 +408,26 @@ fun AdminDashboardScreen(viewModel: AppViewModel) {
 
                     // Application Settings Customizer
                     AdminActionCard(
-                        title = "Application Settings",
-                        subtitle = "Customize app name, announcement marquee banner, fee %, and rules",
+                        title = "Application & Ads Settings",
+                        subtitle = "Configure Unity Ads Account details, Game ID, placements, app name, bonus & rules",
                         icon = Icons.Default.Settings,
                         accentColor = Color(0xFF8B5CF6),
+                        isLocked = !canSettings,
                         onClick = { viewModel.navigateTo(Screen.AdminSettings) },
                         tag = "admin_menu_settings"
                     )
 
-                    // Delete All Platform Data
-                    AdminActionCard(
-                        title = "Delete All Data (Reset All)",
-                        subtitle = "Permanently wipe all users, match history, transactions, withdrawals, tournaments & alerts",
-                        icon = Icons.Default.DeleteForever,
-                        accentColor = LiveRed,
-                        onClick = { showDeleteAllDialog = true },
-                        tag = "admin_menu_delete_all_data"
-                    )
+                    // Delete All Platform Data (Main Admin Only)
+                    if (isMainAdmin) {
+                        AdminActionCard(
+                            title = "Delete All Data (Reset All)",
+                            subtitle = "Permanently wipe all users, match history, transactions, withdrawals, tournaments & alerts",
+                            icon = Icons.Default.DeleteForever,
+                            accentColor = LiveRed,
+                            onClick = { showDeleteAllDialog = true },
+                            tag = "admin_menu_delete_all_data"
+                        )
+                    }
                 }
             }
 
@@ -411,6 +518,7 @@ fun AdminActionCard(
     subtitle: String,
     icon: ImageVector,
     accentColor: Color,
+    isLocked: Boolean = false,
     onClick: () -> Unit,
     tag: String
 ) {
@@ -421,9 +529,11 @@ fun AdminActionCard(
             .clickable { onClick() }
             .testTag(tag),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SlateCardBg),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isLocked) SlateSubtle else SlateCardBg
+        ),
         border = BorderStroke(1.dp, SlateMutedBorder),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isLocked) 0.dp else 1.dp)
     ) {
         Row(
             modifier = Modifier
@@ -434,13 +544,16 @@ fun AdminActionCard(
             Box(
                 modifier = Modifier
                     .size(42.dp)
-                    .background(accentColor.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                    .background(
+                        (if (isLocked) TextSecondaryMuted else accentColor).copy(alpha = 0.12f),
+                        RoundedCornerShape(10.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = accentColor,
+                    tint = if (isLocked) TextSecondaryMuted else accentColor,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -452,7 +565,7 @@ fun AdminActionCard(
                     text = title,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
-                    color = TextPrimaryDark
+                    color = if (isLocked) TextSecondaryMuted else TextPrimaryDark
                 )
                 Text(
                     text = subtitle,
@@ -462,12 +575,34 @@ fun AdminActionCard(
                 )
             }
 
-            Text(
-                text = "Manage →",
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                color = accentColor
-            )
+            Spacer(modifier = Modifier.width(8.dp))
+
+            if (isLocked) {
+                Surface(
+                    color = SlateCardBg,
+                    border = BorderStroke(1.dp, SlateMutedBorder),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = "LOCKED",
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 10.sp,
+                        color = TextSecondaryMuted,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = "Manage →",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = accentColor,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
         }
     }
 }

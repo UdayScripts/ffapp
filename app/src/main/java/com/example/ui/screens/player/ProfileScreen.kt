@@ -108,6 +108,8 @@ import com.example.viewmodel.Screen
 fun ProfileScreen(viewModel: AppViewModel) {
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val isRealAdmin by viewModel.isRealAdmin.collectAsStateWithLifecycle()
+    val isMainAdmin by viewModel.isMainAdmin.collectAsStateWithLifecycle()
+    val currentStaff by viewModel.currentStaffMember.collectAsStateWithLifecycle()
     val appSettings by viewModel.appSettings.collectAsStateWithLifecycle()
     val unreadSupportCount by viewModel.userUnreadSupportCount.collectAsStateWithLifecycle()
     val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
@@ -708,7 +710,7 @@ fun ProfileScreen(viewModel: AppViewModel) {
                     }
                 }
 
-                // Master Admin Management Portal (Visible to Master Admin "Uday" and authorized admins)
+                // Master Admin & Staff Management Portal
                 if (isRealAdmin) {
                     item {
                         Card(
@@ -756,7 +758,11 @@ fun ProfileScreen(viewModel: AppViewModel) {
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "Master Control: ${currentUser?.username?.takeIf { it.isNotBlank() } ?: "Uday"} (Full Access)",
+                                            text = if (isMainAdmin) {
+                                                "Master Control: ${currentUser?.username?.takeIf { it.isNotBlank() } ?: "Uday"} (Full Access)"
+                                            } else {
+                                                "Staff Role (${currentStaff?.roleTitle ?: "Moderator"}): ${currentStaff?.activePermissionLabels()?.size ?: 0} Permissions Active"
+                                            },
                                             fontSize = 11.sp,
                                             color = FireOrangeDark,
                                             fontWeight = FontWeight.Medium,
@@ -774,6 +780,76 @@ fun ProfileScreen(viewModel: AppViewModel) {
                                     maxLines = 1,
                                     softWrap = false
                                 )
+                            }
+                        }
+                    }
+
+                    if (isMainAdmin || currentStaff?.canManageSettings == true) {
+                        item {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { viewModel.navigateTo(Screen.AdminSettings) }
+                                    .testTag("admin_ads_settings_card"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(containerColor = SlateCardBg),
+                                border = BorderStroke(1.5.dp, Color(0xFF8B5CF6).copy(alpha = 0.65f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .background(Color(0xFF8B5CF6).copy(alpha = 0.16f), RoundedCornerShape(10.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AdminPanelSettings,
+                                                contentDescription = null,
+                                                tint = Color(0xFF8B5CF6),
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Application & Ads Account Settings",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = TextPrimaryDark,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "Configure Unity Ads Account, Game ID (${appSettings?.unityGameId ?: "800408446"}) & Placements",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF8B5CF6),
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Configure →",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF8B5CF6),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
                             }
                         }
                     }

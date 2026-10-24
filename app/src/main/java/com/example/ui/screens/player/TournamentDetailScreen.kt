@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import com.example.data.firestore.formatCurrency
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -662,7 +663,7 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
     // Official Free Fire Custom Room Card Slot Selection & Joining Modal
     if (showJoinDialog && tournament != null) {
         val t = tournament!!
-        val userBal = currentUser?.walletBalance ?: 0
+        val userBal = currentUser?.walletBalance ?: 0.0
         val hasEnough = userBal >= t.entryFee
         val participantBySlot = remember(participants) {
             participants.associateBy { it.slotNumber }
@@ -1163,7 +1164,7 @@ fun TournamentDetailScreen(viewModel: AppViewModel) {
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
-                                        text = "⚠️ Insufficient balance! Please top-up ₹${t.entryFee - userBal} in Wallet.",
+                                        text = "⚠️ Insufficient balance! Please top-up ₹${(t.entryFee - userBal).formatCurrency()} in Wallet.",
                                         color = Color(0xFFFCA5A5),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,

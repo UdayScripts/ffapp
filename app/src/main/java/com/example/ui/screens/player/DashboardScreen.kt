@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import com.example.data.firestore.formatCurrency
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -72,6 +73,7 @@ import com.example.data.firestore.TournamentDto
 import com.example.ui.components.HighContrastCard
 import com.example.ui.components.MatchTypeBadge
 import com.example.ui.components.StatusBadge
+import com.example.ui.components.TopPlayersLeaderboardCard
 import com.example.ui.theme.FireOrange
 import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastBorder
@@ -93,6 +95,7 @@ import com.example.viewmodel.Screen
 fun DashboardScreen(viewModel: AppViewModel) {
     val tournaments by viewModel.filteredTournaments.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val topPlayers by viewModel.topPlayers.collectAsStateWithLifecycle()
     val appSettings by viewModel.appSettings.collectAsStateWithLifecycle()
     val selectedMode by viewModel.selectedModeFilter.collectAsStateWithLifecycle()
     val selectedStatus by viewModel.selectedStatusFilter.collectAsStateWithLifecycle()
@@ -170,6 +173,7 @@ fun DashboardScreen(viewModel: AppViewModel) {
                         // Admin Portal Button (Strictly only shown to verified Master Admin udaynath381@gmail.com)
                         if (isRealAdmin) {
                             Surface(
+                                shape = RoundedCornerShape(20.dp),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(20.dp))
                                     .clickable { viewModel.navigateTo(Screen.AdminDashboard) }
@@ -203,6 +207,7 @@ fun DashboardScreen(viewModel: AppViewModel) {
 
                         // Wallet Pill
                         Surface(
+                            shape = RoundedCornerShape(20.dp),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
                                 .clickable { viewModel.navigateTo(Screen.Wallet) }
@@ -222,7 +227,7 @@ fun DashboardScreen(viewModel: AppViewModel) {
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "₹${currentUser?.walletBalance ?: 0}",
+                                    text = "₹${currentUser?.walletBalance.formatCurrency()}",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
                                     color = TextPrimaryDark,

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import com.example.data.firestore.formatCurrency
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -331,7 +332,7 @@ fun AdminUserManagerScreen(viewModel: AppViewModel) {
         var reasonInput by remember(u.id) { mutableStateOf("Tournament settlement compensation") }
 
         val deltaAmt = deltaInput.toIntOrNull() ?: 0
-        val projectedBal = if (isAdd) u.walletBalance + deltaAmt else (u.walletBalance - deltaAmt).coerceAtLeast(0)
+        val projectedBal = if (isAdd) u.walletBalance + deltaAmt else (u.walletBalance - deltaAmt).coerceAtLeast(0.0)
 
         Dialog(
             onDismissRequest = { userToAdjust = null },

@@ -24,11 +24,13 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
+import com.example.data.firestore.formatCurrency
+
 data class DepositReceiptData(
     val orderId: String,
     val txnId: String,
-    val amount: Int,
-    val updatedBalance: Int,
+    val amount: Number,
+    val updatedBalance: Number,
     val paymentMethod: String = "Paytm UPI / QR Code",
     val userName: String = "Player",
     val userEmail: String = "",
@@ -112,13 +114,13 @@ object DepositReceiptManager {
         paint.color = Color.parseColor("#10B981")
         paint.textSize = 52f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        canvas.drawText("+₹${data.amount}", (width / 2).toFloat(), 305f, paint)
+        canvas.drawText("+₹${data.amount.formatCurrency()}", (width / 2).toFloat(), 305f, paint)
 
         // Updated Balance
         paint.color = Color.parseColor("#CBD5E1")
         paint.textSize = 17f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        canvas.drawText("Updated Wallet Balance: ₹${data.updatedBalance}", (width / 2).toFloat(), 333f, paint)
+        canvas.drawText("Updated Wallet Balance: ₹${data.updatedBalance.formatCurrency()}", (width / 2).toFloat(), 333f, paint)
 
         // Dotted / Solid Horizontal Divider
         paint.color = Color.parseColor("#334155")

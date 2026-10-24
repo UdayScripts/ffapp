@@ -720,23 +720,28 @@ fun AdminSupportChatScreen(viewModel: AppViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = HighContrastDark,
+                        border = BorderStroke(1.5.dp, FireOrange),
+                        shadowElevation = 3.dp,
                         modifier = Modifier
                             .size(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .clickable(enabled = !isEncodingPhoto && !isSending) {
                                 photoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
                             }
-                            .testTag("admin_attach_photo_button"),
-                        color = FireOrange.copy(alpha = 0.14f),
-                        border = BorderStroke(1.dp, FireOrange.copy(alpha = 0.4f))
+                            .testTag("admin_attach_photo_button")
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.AddPhotoAlternate,
                                 contentDescription = "Attach Photo",
-                                tint = FireOrangeDark,
+                                tint = FireOrange,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -751,12 +756,16 @@ fun AdminSupportChatScreen(viewModel: AppViewModel) {
                             Text(
                                 text = "Reply as Admin Support...",
                                 fontSize = 13.sp,
-                                color = TextSecondaryMuted
+                                color = TextSecondaryMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         },
                         maxLines = 4,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimaryDark,
+                            unfocusedTextColor = TextPrimaryDark,
                             focusedBorderColor = FireOrange,
                             unfocusedBorderColor = SlateMutedBorder,
                             focusedContainerColor = SlateSubtle,
@@ -775,9 +784,16 @@ fun AdminSupportChatScreen(viewModel: AppViewModel) {
                             (replyInput.isNotBlank() || !attachedImageBase64.isNullOrBlank())
 
                     Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (canSend) FireOrange else HighContrastDark.copy(alpha = 0.85f),
+                        border = BorderStroke(
+                            width = 1.5.dp,
+                            color = if (canSend) FireOrangeDark else SlateMutedBorder
+                        ),
+                        shadowElevation = if (canSend) 4.dp else 1.dp,
                         modifier = Modifier
                             .size(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .clickable(enabled = canSend) {
                                 val textToSend = replyInput.trim()
                                 val imgToSend = attachedImageBase64
@@ -794,10 +810,12 @@ fun AdminSupportChatScreen(viewModel: AppViewModel) {
                                     }
                                 }
                             }
-                            .testTag("admin_send_support_reply_button"),
-                        color = if (canSend) FireOrange else SlateSubtle
+                            .testTag("admin_send_support_reply_button")
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             if (isSending) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
@@ -808,7 +826,7 @@ fun AdminSupportChatScreen(viewModel: AppViewModel) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.Send,
                                     contentDescription = "Send Reply",
-                                    tint = if (canSend) Color.White else Color(0xFF94A3B8),
+                                    tint = if (canSend) Color.White else Color(0xFFCBD5E1),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }

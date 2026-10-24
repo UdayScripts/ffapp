@@ -11,17 +11,22 @@ import com.example.data.firestore.FirestoreRepository
 import com.example.data.firestore.NotificationDto
 import com.example.data.firestore.ParticipantDto
 import com.example.data.firestore.SettleData
+import com.example.data.firestore.StaffMemberDto
 import com.example.data.firestore.SupportMessageDto
 import com.example.data.firestore.SupportThreadDto
 import com.example.data.firestore.TournamentDto
 import com.example.data.firestore.TransactionDto
 import com.example.data.firestore.UserDto
 import com.example.data.firestore.WithdrawalRequestDto
+import com.example.data.firestore.formatCurrency
 import com.example.data.payment.PaytmPaymentService
 import com.example.data.payment.PaytmTxnStatus
 import com.example.notification.PushNotificationHelper
 import com.example.ui.components.RegistrationSuccessEvent
 import com.google.firebase.auth.FirebaseAuth
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -39,6 +44,7 @@ import kotlinx.coroutines.launch
 
 sealed class Screen(val route: String) {
     object Dashboard : Screen("dashboard")
+    object TopPlayers : Screen("top_players")
     object TournamentDetails : Screen("tournament_details")
     object TournamentLobby : Screen("tournament_lobby")
     object Wallet : Screen("wallet")
@@ -58,6 +64,7 @@ sealed class Screen(val route: String) {
     object AdminWithdrawals : Screen("admin_withdrawals")
     object AdminSupportInbox : Screen("admin_support_inbox")
     object AdminSupportChat : Screen("admin_support_chat")
+    object AdminStaff : Screen("admin_staff")
 }
 
 data class UiNotificationAlert(
@@ -403,7 +410,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val isRealAdmin: StateFlow<Boolean> = combine(_currentUserId, currentUser) { uid, user ->
+    val staffMembers: StateFlow<List<StaffMemberDto>> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
+            flowOf(emptyList())
+        } else {
+            firestoreRepo.observeStaffMembers()
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val isMainAdmin: StateFlow<Boolean> = combine(_currentUserId, currentUser) { uid, user ->
         if (uid.isBlank()) {
             false
         } else {
@@ -412,8 +427,67 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val currentAuthEmail = FirebaseAuth.getInstance().currentUser?.takeIf { it.uid == uid }?.email
             val email = user?.email ?: session?.email ?: currentAuthEmail ?: ""
             val username = user?.username ?: session?.username ?: ""
-            val isAdminFlag = (user?.isAdmin == true) || (session?.isAdmin == true)
-            AuthManager.isMasterAdminIdentity(email = email, username = username, uid = uid) || isAdminFlag
+            AuthManager.isMasterAdminIdentity(email = email, username = username, uid = uid)
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        run {
+            val uid = _currentUserId.value
+            val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
+            uid.isNotBlank() && AuthManager.isMasterAdminIdentity(
+                email = session?.email,
+                username = session?.username,
+                uid = uid
+            )
+        }
+    )
+
+    val currentStaffMember: StateFlow<StaffMemberDto?> = combine(
+        _currentUserId,
+        currentUser,
+        staffMembers
+    ) { uid, user, staffList ->
+        if (uid.isBlank() || staffList.isEmpty()) {
+            null
+        } else {
+            val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
+                ?: AuthManager.loadSavedSession(getApplication())?.takeIf { it.uid == uid }
+            val currentAuthEmail = FirebaseAuth.getInstance().currentUser?.takeIf { it.uid == uid }?.email
+            val email = (user?.email ?: session?.email ?: currentAuthEmail ?: "").trim().lowercase()
+            val username = (user?.username ?: session?.username ?: "").trim()
+            val usernameKey = AuthManager.normalizeUsernameKey(username)
+
+            staffList.firstOrNull { staff ->
+                (staff.userId.isNotBlank() && staff.userId == uid) ||
+                    (usernameKey.isNotBlank() && staff.usernameLower == usernameKey) ||
+                    (email.isNotBlank() && staff.email.isNotBlank() && staff.email.equals(email, ignoreCase = true))
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val isRealAdmin: StateFlow<Boolean> = combine(
+        _currentUserId,
+        currentUser,
+        currentStaffMember
+    ) { uid, user, staffRecord ->
+        if (uid.isBlank()) {
+            false
+        } else {
+            val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
+                ?: AuthManager.loadSavedSession(getApplication())?.takeIf { it.uid == uid }
+            val currentAuthEmail = FirebaseAuth.getInstance().currentUser?.takeIf { it.uid == uid }?.email
+            val email = user?.email ?: session?.email ?: currentAuthEmail ?: ""
+            val username = user?.username ?: session?.username ?: ""
+            val isMaster = AuthManager.isMasterAdminIdentity(email = email, username = username, uid = uid)
+            if (isMaster) {
+                true
+            } else if (staffRecord != null) {
+                staffRecord.isActive
+            } else {
+                (user?.isAdmin == true) || (session?.isAdmin == true)
+            }
         }
     }.stateIn(
         viewModelScope,
@@ -429,10 +503,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private val cloudAllUsers: kotlinx.coroutines.flow.Flow<List<UserDto>> = combine(_currentUserId, isRealAdmin) { uid, isAdmin ->
-        uid to (isAdmin || isUserRealAdmin())
-    }.flatMapLatest { (uid, isAdmin) ->
-        if (uid.isBlank() || !isAdmin) {
+    private val cloudAllUsers: kotlinx.coroutines.flow.Flow<List<UserDto>> = _currentUserId.flatMapLatest { uid ->
+        if (uid.isBlank()) {
             flowOf(emptyList())
         } else {
             firestoreRepo.observeAllUsers().onStart { emit(emptyList()) }
@@ -481,6 +553,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             firestoreRepo.observeUserParticipations(uid)
         }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val topPlayers: StateFlow<List<UserDto>> = combine(allUsers, userParticipations) { users, myParticipations ->
+        val myWinCountFromParticipations = myParticipations.count { it.placement == 1 || (it.placement == 0 && it.prizeWon > 0) }
+        val activeUid = _currentUserId.value
+        users
+            .filter { !it.isSuspended }
+            .map { user ->
+                val resolvedWins = if (user.id == activeUid) {
+                    maxOf(user.effectiveTournamentWins, myWinCountFromParticipations)
+                } else {
+                    user.effectiveTournamentWins
+                }
+                user.copy(totalWins = resolvedWins)
+            }
+            .sortedWith(
+                compareByDescending<UserDto> { it.totalWins }
+                    .thenByDescending { it.totalWinnings }
+                    .thenByDescending { it.totalKills }
+                    .thenByDescending { it.matchesPlayed }
+                    .thenBy { it.username.lowercase() }
+            )
+            .take(5)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -656,7 +751,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun isUserRealAdmin(): Boolean {
+    fun isUserMainAdmin(): Boolean {
         val uid = _currentUserId.value
         if (uid.isBlank()) return false
         val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
@@ -665,8 +760,75 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val userDoc = currentUser.value
         val email = userDoc?.email ?: session?.email ?: currentAuthEmail ?: ""
         val username = userDoc?.username ?: session?.username ?: ""
-        val isDocAdmin = (userDoc?.isAdmin == true) || (session?.isAdmin == true)
-        return AuthManager.isMasterAdminIdentity(email = email, username = username, uid = uid) || isDocAdmin
+        return AuthManager.isMasterAdminIdentity(email = email, username = username, uid = uid)
+    }
+
+    fun resolveCurrentStaffMember(): StaffMemberDto? {
+        val uid = _currentUserId.value
+        if (uid.isBlank()) return null
+        currentStaffMember.value?.let { return it }
+        val list = staffMembers.value
+        if (list.isEmpty()) return null
+        val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
+            ?: AuthManager.loadSavedSession(getApplication())?.takeIf { it.uid == uid }
+        val currentAuthEmail = FirebaseAuth.getInstance().currentUser?.takeIf { it.uid == uid }?.email
+        val userDoc = currentUser.value
+        val email = (userDoc?.email ?: session?.email ?: currentAuthEmail ?: "").trim().lowercase()
+        val username = (userDoc?.username ?: session?.username ?: "").trim()
+        val usernameKey = AuthManager.normalizeUsernameKey(username)
+        return list.firstOrNull { staff ->
+            (staff.userId.isNotBlank() && staff.userId == uid) ||
+                (usernameKey.isNotBlank() && staff.usernameLower == usernameKey) ||
+                (email.isNotBlank() && staff.email.isNotBlank() && staff.email.equals(email, ignoreCase = true))
+        }
+    }
+
+    fun isUserRealAdmin(): Boolean {
+        if (isUserMainAdmin()) return true
+        val staff = resolveCurrentStaffMember()
+        if (staff != null) return staff.isActive
+        val uid = _currentUserId.value
+        if (uid.isBlank()) return false
+        val session = AuthManager.currentSession()?.takeIf { it.uid == uid }
+            ?: AuthManager.loadSavedSession(getApplication())?.takeIf { it.uid == uid }
+        val userDoc = currentUser.value
+        return (userDoc?.isAdmin == true) || (session?.isAdmin == true)
+    }
+
+    fun canAccessMatchManagement(): Boolean {
+        if (isUserMainAdmin()) return true
+        val staff = resolveCurrentStaffMember()
+        return if (staff != null) staff.isActive && staff.canCreateMatch else isUserRealAdmin()
+    }
+
+    fun canAccessBalanceManagement(): Boolean {
+        if (isUserMainAdmin()) return true
+        val staff = resolveCurrentStaffMember()
+        return if (staff != null) staff.isActive && staff.canManageBalance else isUserRealAdmin()
+    }
+
+    fun canAccessSupportManagement(): Boolean {
+        if (isUserMainAdmin()) return true
+        val staff = resolveCurrentStaffMember()
+        return if (staff != null) staff.isActive && staff.canManageSupport else isUserRealAdmin()
+    }
+
+    fun canAccessBroadcast(): Boolean {
+        if (isUserMainAdmin()) return true
+        val staff = resolveCurrentStaffMember()
+        return if (staff != null) staff.isActive && staff.canBroadcast else isUserRealAdmin()
+    }
+
+    fun canAccessWithdrawalManagement(): Boolean {
+        if (isUserMainAdmin()) return true
+        val staff = resolveCurrentStaffMember()
+        return if (staff != null) staff.isActive && staff.canManageWithdrawals else isUserRealAdmin()
+    }
+
+    fun canAccessSettingsManagement(): Boolean {
+        if (isUserMainAdmin()) return true
+        val staff = resolveCurrentStaffMember()
+        return if (staff != null) staff.isActive && staff.canManageSettings else isUserRealAdmin()
     }
 
     @Volatile
@@ -704,6 +866,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 if (uid.isNotBlank() && !uid.startsWith("demo_")) {
                     prefs.edit().putString("last_active_uid", uid).apply()
                     com.example.notification.NotificationBackgroundManager.scheduleBackgroundSync(getApplication())
+                }
+            }
+        }
+
+        // Automatically sync Cloud AppSettings Ads Account Details with UnityAdsManager in real time
+        viewModelScope.launch {
+            appSettings.collect { settings ->
+                if (settings != null) {
+                    com.example.data.ads.UnityAdsManager.configure(
+                        context = getApplication(),
+                        gameId = settings.unityGameId,
+                        placementId = settings.unityPlacementId,
+                        interstitialPlacementId = settings.unityInterstitialId,
+                        bannerPlacementId = settings.unityBannerId,
+                        accountName = settings.adsAccountName,
+                        accountEmail = settings.adsAccountEmail,
+                        organizationId = settings.adsOrganizationId,
+                        testMode = settings.unityTestMode,
+                        adsEnabled = settings.adsEnabled,
+                        dailyAdLimit = settings.dailyAdLimit,
+                        rewardPerAd = settings.adRewardAmount
+                    )
                 }
             }
         }
@@ -914,10 +1098,50 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 screen is Screen.AdminWithdrawals ||
                 screen is Screen.AdminSupportInbox ||
                 screen is Screen.AdminSupportChat ||
+                screen is Screen.AdminStaff ||
                 screen is Screen.AdminAuth
         if (isAdminScreen && !isUserRealAdmin()) {
-            showToast("Access Denied: Only authorized Admin accounts can access the Admin Portal.")
+            showToast("Access Denied: Only authorized Admin & Staff accounts can access the Admin Portal.")
             return
+        }
+        when (screen) {
+            is Screen.AdminStaff -> {
+                if (!isUserMainAdmin()) {
+                    showToast("Permission Denied: Only the Main Admin can manage staff & permissions.")
+                    return
+                }
+            }
+            is Screen.AdminTournaments, is Screen.AdminTournamentEditor, is Screen.AdminSettlement -> {
+                if (!canAccessMatchManagement()) {
+                    showToast("Permission Denied: 'Create & Manage Match' is disabled for your staff role.")
+                    return
+                }
+            }
+            is Screen.AdminUsers -> {
+                if (!canAccessBalanceManagement()) {
+                    showToast("Permission Denied: 'Manage Balance & Users' is disabled for your staff role.")
+                    return
+                }
+            }
+            is Screen.AdminSupportInbox, is Screen.AdminSupportChat -> {
+                if (!canAccessSupportManagement()) {
+                    showToast("Permission Denied: 'Manage Support Messages' is disabled for your staff role.")
+                    return
+                }
+            }
+            is Screen.AdminWithdrawals -> {
+                if (!canAccessWithdrawalManagement()) {
+                    showToast("Permission Denied: 'Withdrawal Management' is disabled for your staff role.")
+                    return
+                }
+            }
+            is Screen.AdminSettings -> {
+                if (!canAccessSettingsManagement()) {
+                    showToast("Permission Denied: 'Application & Ads Settings' is disabled for your staff role.")
+                    return
+                }
+            }
+            else -> {}
         }
         if (_currentScreen.value != screen) {
             _screenHistory.add(_currentScreen.value)
@@ -931,8 +1155,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openAdminSupportThread(userId: String) {
-        if (!isUserRealAdmin()) {
-            showToast("Admin permission required.")
+        if (!canAccessSupportManagement()) {
+            showToast("Permission Denied: 'Manage Support Messages' is disabled for your staff role.")
             return
         }
         _selectedAdminSupportUserId.value = userId
@@ -1005,8 +1229,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         imageBase64: String? = null,
         onComplete: (Boolean, String) -> Unit = { _, _ -> }
     ) {
-        if (!isUserRealAdmin()) {
-            onComplete(false, "Admin permission required.")
+        if (!canAccessSupportManagement()) {
+            onComplete(false, "Permission Denied: 'Manage Support Messages' is disabled for your staff role.")
             return
         }
         val adminUid = _currentUserId.value.ifBlank { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
@@ -1138,8 +1362,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         adminNote: String,
         onComplete: (Boolean, String) -> Unit = { _, _ -> }
     ) {
-        if (!isUserRealAdmin()) {
-            onComplete(false, "Admin permission required.")
+        if (!canAccessWithdrawalManagement()) {
+            onComplete(false, "Permission Denied: 'Withdrawal Management' is disabled for your staff role.")
             return
         }
         viewModelScope.launch {
@@ -1164,8 +1388,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         reason: String,
         onComplete: (Boolean, String) -> Unit = { _, _ -> }
     ) {
-        if (!isUserRealAdmin()) {
-            onComplete(false, "Admin permission required.")
+        if (!canAccessWithdrawalManagement()) {
+            onComplete(false, "Permission Denied: 'Withdrawal Management' is disabled for your staff role.")
             return
         }
         viewModelScope.launch {
@@ -1356,6 +1580,43 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // User: Claim reward after watching Unity Rewarded Video Ad
+    fun claimAdReward(
+        rewardAmount: Int,
+        onComplete: (Boolean, String, Double) -> Unit = { _, _, _ -> }
+    ) {
+        val uid = _currentUserId.value
+        if (uid.isBlank()) {
+            onComplete(false, "Please sign in to earn ad rewards", 0.0)
+            return
+        }
+        viewModelScope.launch {
+            val res = firestoreRepo.claimAdReward(uid, rewardAmount)
+            res.fold(
+                onSuccess = { claimResult ->
+                    val user = currentUser.value
+                    val todayDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                    if (user != null) {
+                        _optimisticUserOverride.value = user.copy(
+                            walletBalance = claimResult.newBalance,
+                            dailyAdsWatchedCount = claimResult.adsWatchedToday,
+                            dailyAdsWatchedDate = todayDateStr
+                        )
+                    }
+                    val formattedAmt = claimResult.amountEarned.formatCurrency()
+                    _toastMessage.emit("🎉 +₹$formattedAmt added to your wallet! (${claimResult.remainingAdsToday} ads remaining today)")
+                    _liveAlert.emit(UiNotificationAlert("Ad Reward Unlocked! 🎬", "+₹$formattedAmt credited to deposit balance."))
+                    onComplete(true, "₹$formattedAmt added to your wallet!", claimResult.amountEarned)
+                },
+                onFailure = { err ->
+                    val msg = err.message ?: "Failed to claim ad reward"
+                    _toastMessage.emit(msg)
+                    onComplete(false, msg, 0.0)
+                }
+            )
+        }
+    }
+
     suspend fun checkAndVerifyPaytmDeposit(orderId: String, amount: Int): PaytmTxnStatus {
         val checkResult = PaytmPaymentService.checkTransactionStatus(orderId)
         val status = checkResult.getOrNull() ?: PaytmTxnStatus(
@@ -1397,6 +1658,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateRoomCredentials(tournamentId: String, roomId: String, roomPass: String, notice: String) {
+        if (!canAccessMatchManagement()) {
+            showToast("Permission Denied: 'Create & Manage Match' is disabled for your staff role.")
+            return
+        }
         viewModelScope.launch {
             val res = firestoreRepo.updateRoomCredentials(tournamentId, roomId, roomPass, notice)
             res.onSuccess { msg ->
@@ -1416,6 +1681,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun createTournament(tournament: TournamentDto) {
+        if (!canAccessMatchManagement()) {
+            showToast("Permission Denied: 'Create & Manage Match' is disabled for your staff role.")
+            return
+        }
         viewModelScope.launch {
             val res = firestoreRepo.createTournament(tournament)
             res.onSuccess { msg ->
@@ -1428,6 +1697,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateTournament(tournament: TournamentDto) {
+        if (!canAccessMatchManagement()) {
+            showToast("Permission Denied: 'Create & Manage Match' is disabled for your staff role.")
+            return
+        }
         viewModelScope.launch {
             val res = firestoreRepo.updateTournament(tournament)
             res.onSuccess { msg ->
@@ -1446,6 +1719,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteTournament(tournamentId: String) {
+        if (!canAccessMatchManagement()) {
+            showToast("Permission Denied: 'Create & Manage Match' is disabled for your staff role.")
+            return
+        }
         viewModelScope.launch {
             val res = firestoreRepo.deleteTournament(tournamentId)
             res.onSuccess { msg ->
@@ -1460,6 +1737,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun settleMatch(tournamentId: String, settleList: List<SettleData>) {
+        if (!canAccessMatchManagement()) {
+            showToast("Permission Denied: 'Create & Manage Match' is disabled for your staff role.")
+            return
+        }
         viewModelScope.launch {
             val res = firestoreRepo.settleMatch(tournamentId, settleList)
             res.onSuccess { msg ->
@@ -1473,6 +1754,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun adjustUserBalance(userId: String, delta: Int, reason: String) {
+        if (!canAccessBalanceManagement()) {
+            showToast("Permission Denied: 'Manage Balance & Users' is disabled for your staff role.")
+            return
+        }
         viewModelScope.launch {
             val res = firestoreRepo.adjustUserBalance(userId, delta, reason)
             res.onSuccess { msg ->
@@ -1484,6 +1769,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleUserSuspension(userId: String) {
+        if (!canAccessBalanceManagement()) {
+            showToast("Permission Denied: 'Manage Balance & Users' is disabled for your staff role.")
+            return
+        }
         viewModelScope.launch {
             val res = firestoreRepo.toggleUserSuspension(userId)
             res.onSuccess { msg ->
@@ -1495,8 +1784,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteUserAndHistory(userId: String) {
-        if (!isUserRealAdmin()) {
-            showToast("Admin permission required.")
+        if (!canAccessBalanceManagement()) {
+            showToast("Permission Denied: 'Manage Balance & Users' is disabled for your staff role.")
             return
         }
         viewModelScope.launch {
@@ -1512,8 +1801,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteAllPlatformData(onComplete: (Boolean, String) -> Unit = { _, _ -> }) {
-        if (!isUserRealAdmin()) {
-            onComplete(false, "Admin permission required.")
+        if (!isUserMainAdmin()) {
+            val msg = "Permission Denied: Only the Main Admin can wipe all platform data."
+            showToast(msg)
+            onComplete(false, msg)
             return
         }
         isWipingData = true
@@ -1561,12 +1852,92 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateSettings(settings: AppSettingsDto) {
+        if (!canAccessSettingsManagement()) {
+            showToast("Permission Denied: 'Application & Ads Settings' is disabled for your staff role.")
+            return
+        }
+        com.example.data.ads.UnityAdsManager.configure(
+            context = getApplication(),
+            gameId = settings.unityGameId,
+            placementId = settings.unityPlacementId,
+            interstitialPlacementId = settings.unityInterstitialId,
+            bannerPlacementId = settings.unityBannerId,
+            accountName = settings.adsAccountName,
+            accountEmail = settings.adsAccountEmail,
+            organizationId = settings.adsOrganizationId,
+            testMode = settings.unityTestMode,
+            adsEnabled = settings.adsEnabled,
+            dailyAdLimit = settings.dailyAdLimit,
+            rewardPerAd = settings.adRewardAmount
+        )
         viewModelScope.launch {
             val res = firestoreRepo.updateAppSettings(settings)
             res.onSuccess { msg ->
                 _toastMessage.emit(msg)
             }.onFailure { err ->
                 _toastMessage.emit(err.message ?: "Failed to save settings")
+            }
+        }
+    }
+
+    fun updateAdsAccountDetails(
+        adsEnabled: Boolean,
+        adsAccountName: String,
+        adsAccountEmail: String,
+        adsOrganizationId: String,
+        unityGameId: String,
+        unityPlacementId: String,
+        unityInterstitialId: String,
+        unityBannerId: String,
+        unityTestMode: Boolean,
+        dailyAdLimit: Int,
+        adRewardAmount: Double
+    ) {
+        if (!canAccessSettingsManagement()) {
+            showToast("Permission Denied: 'Application & Ads Settings' is disabled for your staff role.")
+            return
+        }
+        val base = appSettings.value ?: AppSettingsDto(id = "main")
+        val updated = base.copy(
+            id = "main",
+            adsEnabled = adsEnabled,
+            adsAccountName = adsAccountName.trim().ifBlank { com.example.data.ads.UnityAdsManager.DEFAULT_ACCOUNT_NAME },
+            adsAccountEmail = adsAccountEmail.trim().ifBlank { com.example.data.ads.UnityAdsManager.DEFAULT_ACCOUNT_EMAIL },
+            adsOrganizationId = adsOrganizationId.trim(),
+            unityGameId = com.example.data.ads.UnityAdsManager.normalizeGameId(unityGameId),
+            unityPlacementId = com.example.data.ads.UnityAdsManager.normalizePlacementId(unityPlacementId),
+            unityInterstitialId = unityInterstitialId.trim(),
+            unityBannerId = unityBannerId.trim(),
+            unityTestMode = unityTestMode,
+            dailyAdLimit = dailyAdLimit.coerceIn(1, 50),
+            adRewardAmount = adRewardAmount.takeIf { it > 0.0 } ?: com.example.data.ads.UnityAdsManager.DEFAULT_REWARD_PER_AD
+        )
+        com.example.data.ads.UnityAdsManager.configure(
+            context = getApplication(),
+            gameId = updated.unityGameId,
+            placementId = updated.unityPlacementId,
+            interstitialPlacementId = updated.unityInterstitialId,
+            bannerPlacementId = updated.unityBannerId,
+            accountName = updated.adsAccountName,
+            accountEmail = updated.adsAccountEmail,
+            organizationId = updated.adsOrganizationId,
+            testMode = updated.unityTestMode,
+            adsEnabled = updated.adsEnabled,
+            dailyAdLimit = updated.dailyAdLimit,
+            rewardPerAd = updated.adRewardAmount
+        )
+        viewModelScope.launch {
+            val res = firestoreRepo.updateAppSettings(updated)
+            res.onSuccess {
+                _toastMessage.emit("Ads account details saved & synced with Unity Ads SDK! 🎬")
+                _liveAlert.emit(
+                    UiNotificationAlert(
+                        title = "🎬 Ads Account Updated",
+                        message = "Game ID ${updated.unityGameId} (${updated.unityPlacementId}) active in ${if (updated.unityTestMode) "Test" else "Live Real Ads"} mode."
+                    )
+                )
+            }.onFailure { err ->
+                _toastMessage.emit(err.message ?: "Saved locally; cloud sync failed")
             }
         }
     }
@@ -1617,6 +1988,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         roomId: String? = null,
         roomPassword: String? = null
     ) {
+        if (!canAccessBroadcast()) {
+            showToast("Permission Denied: 'Broadcast Alerts' is disabled for your staff role.")
+            return
+        }
         viewModelScope.launch {
             val res = firestoreRepo.broadcastNotification(
                 title = title,
@@ -1666,6 +2041,81 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
             _toastMessage.emit("Push notification sent to device drawer")
+        }
+    }
+
+    // Main Admin: Add or Update a Staff Member and their role permissions
+    fun saveOrUpdateStaffMember(
+        staff: StaffMemberDto,
+        plainPassword: String = "",
+        onComplete: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
+        if (!isUserMainAdmin()) {
+            val msg = "Only the Main Admin can add or edit staff permissions."
+            showToast(msg)
+            onComplete(false, msg)
+            return
+        }
+        viewModelScope.launch {
+            val res = firestoreRepo.saveOrUpdateStaffMember(staff, plainPassword)
+            res.fold(
+                onSuccess = { msg ->
+                    _toastMessage.emit(msg)
+                    onComplete(true, msg)
+                },
+                onFailure = { err ->
+                    val msg = err.message ?: "Failed to save staff member"
+                    _toastMessage.emit(msg)
+                    onComplete(false, msg)
+                }
+            )
+        }
+    }
+
+    // Main Admin: Quickly toggle a single permission for a staff member
+    fun toggleStaffPermission(
+        staff: StaffMemberDto,
+        permissionKey: String,
+        enabled: Boolean
+    ) {
+        if (!isUserMainAdmin()) {
+            showToast("Only the Main Admin can modify staff permissions.")
+            return
+        }
+        val updated = when (permissionKey) {
+            "canCreateMatch" -> staff.copy(canCreateMatch = enabled)
+            "canManageBalance" -> staff.copy(canManageBalance = enabled)
+            "canManageSupport" -> staff.copy(canManageSupport = enabled)
+            "canBroadcast" -> staff.copy(canBroadcast = enabled)
+            "canManageWithdrawals" -> staff.copy(canManageWithdrawals = enabled)
+            "canManageSettings" -> staff.copy(canManageSettings = enabled)
+            else -> staff
+        }
+        saveOrUpdateStaffMember(updated)
+    }
+
+    // Main Admin: Enable or Disable a staff member's access
+    fun toggleStaffActiveStatus(staff: StaffMemberDto, isActive: Boolean) {
+        if (!isUserMainAdmin()) {
+            showToast("Only the Main Admin can change staff status.")
+            return
+        }
+        saveOrUpdateStaffMember(staff.copy(isActive = isActive))
+    }
+
+    // Main Admin: Delete a staff member
+    fun deleteStaffMember(staffId: String) {
+        if (!isUserMainAdmin()) {
+            showToast("Only the Main Admin can remove staff members.")
+            return
+        }
+        viewModelScope.launch {
+            val res = firestoreRepo.deleteStaffMember(staffId)
+            res.onSuccess { msg ->
+                _toastMessage.emit(msg)
+            }.onFailure { err ->
+                _toastMessage.emit(err.message ?: "Failed to remove staff member")
+            }
         }
     }
 }

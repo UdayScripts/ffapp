@@ -18,7 +18,18 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
+
+data class AdRewardClaimResult(
+    val amountEarned: Double,
+    val newBalance: Double,
+    val adsWatchedToday: Int,
+    val remainingAdsToday: Int,
+    val txnId: String
+)
 
 data class SettleData(
     val participantId: String,
@@ -345,13 +356,13 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
             val txn = TransactionDto(
                 id = txnId,
                 userId = userId,
-                amount = -tournament.entryFee,
+                amount = -tournament.entryFee.toDouble(),
                 type = "ENTRY_FEE",
                 description = "Entry Fee: ${tournament.title}",
                 referenceId = "MATCH-${tournament.id}",
                 status = "SUCCESS",
                 timestamp = System.currentTimeMillis(),
-                balanceAfter = newBalance
+                balanceAfter = newBalance.toDouble()
             )
             userDocRef.collection("transactions").document(txnId).set(txn).await()
 
@@ -424,13 +435,13 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
             val txn = TransactionDto(
                 id = txnId,
                 userId = userId,
-                amount = amount,
+                amount = amount.toDouble(),
                 type = "DEPOSIT",
                 description = "Instant Top-Up ($paymentMethod)",
                 referenceId = ref,
                 status = "SUCCESS",
                 timestamp = System.currentTimeMillis(),
-                balanceAfter = newBalance
+                balanceAfter = newBalance.toDouble()
             )
             userDocRef.collection("transactions").document(txnId).set(txn).await()
 
@@ -491,13 +502,13 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
             val txn = TransactionDto(
                 id = orderId,
                 userId = userId,
-                amount = amount,
+                amount = amount.toDouble(),
                 type = "DEPOSIT",
                 description = "Paytm UPI Deposit (Txn: $txnId)",
                 referenceId = txnId,
                 status = "SUCCESS",
                 timestamp = System.currentTimeMillis(),
-                balanceAfter = newBalance
+                balanceAfter = newBalance.toDouble()
             )
             txnDocRef.set(txn).await()
 
@@ -514,6 +525,110 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
             db.collection("notifications").document(notifId).set(notif).await()
 
             Result.success("₹$amount credited to wallet!")
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, "users/$userId")
+            Result.failure(e)
+        }
+    }
+
+    // Claim Reward after watching a Unity Video Ad (Dynamic reward & daily limit from AppSettings, default 0.5 & 5)
+    suspend fun claimAdReward(
+        userId: String,
+        rewardAmount: Int = 1
+    ): Result<AdRewardClaimResult> = withContext(Dispatchers.IO) {
+        if (userId.isBlank()) return@withContext Result.failure(Exception("Authentication required to claim reward"))
+
+        val todayDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val userDocRef = db.collection("users").document(userId)
+        val settingsDocRef = db.collection("app_settings").document("main")
+
+        try {
+            val claimResult = db.runTransaction { transaction ->
+                val userSnap = transaction.get(userDocRef)
+                if (!userSnap.exists()) {
+                    throw IllegalStateException("User profile not found")
+                }
+                val settingsSnap = try {
+                    transaction.get(settingsDocRef)
+                } catch (_: Exception) {
+                    null
+                }
+                val adsEnabled = settingsSnap?.getBoolean("adsEnabled") ?: true
+                if (!adsEnabled) {
+                    throw IllegalStateException("Rewarded video ads are currently disabled by the administrator.")
+                }
+                val dailyLimit = (settingsSnap?.getLong("dailyAdLimit")?.toInt() ?: 5).coerceIn(1, 50)
+                val actualReward = (settingsSnap?.getDouble("adRewardAmount")
+                    ?: settingsSnap?.getLong("adRewardAmount")?.toDouble()
+                    ?: 0.5).takeIf { it > 0.0 } ?: 0.5
+
+                val curBal = userSnap.getDouble("walletBalance")
+                    ?: userSnap.getLong("walletBalance")?.toDouble()
+                    ?: 0.0
+                val lastAdDate = userSnap.getString("dailyAdsWatchedDate") ?: ""
+                val currentAdCount = if (lastAdDate == todayDateStr) {
+                    userSnap.getLong("dailyAdsWatchedCount")?.toInt() ?: 0
+                } else {
+                    0
+                }
+
+                if (currentAdCount >= dailyLimit) {
+                    throw IllegalStateException("Daily limit reached! You have completed all $dailyLimit ads for today. Resets tomorrow at 12:00 AM.")
+                }
+
+                val newAdCount = currentAdCount + 1
+                val newBalance = curBal + actualReward
+
+                transaction.update(
+                    userDocRef,
+                    mapOf(
+                        "walletBalance" to newBalance,
+                        "dailyAdsWatchedCount" to newAdCount,
+                        "dailyAdsWatchedDate" to todayDateStr
+                    )
+                )
+
+                val formattedReward = actualReward.formatCurrency()
+                val txnId = "AD-" + UUID.randomUUID().toString().take(8).uppercase()
+                val txn = TransactionDto(
+                    id = txnId,
+                    userId = userId,
+                    amount = actualReward,
+                    type = "REWARD_AD",
+                    description = "Watched Video Ad Reward (+₹$formattedReward)",
+                    referenceId = txnId,
+                    status = "SUCCESS",
+                    timestamp = System.currentTimeMillis(),
+                    balanceAfter = newBalance
+                )
+                transaction.set(userDocRef.collection("transactions").document(txnId), txn)
+
+                AdRewardClaimResult(
+                    amountEarned = actualReward,
+                    newBalance = newBalance,
+                    adsWatchedToday = newAdCount,
+                    remainingAdsToday = (dailyLimit - newAdCount).coerceAtLeast(0),
+                    txnId = txnId
+                )
+            }.await()
+
+            // Send in-app notification to the user
+            try {
+                val formattedEarned = claimResult.amountEarned.formatCurrency()
+                val totalAllowed = claimResult.adsWatchedToday + claimResult.remainingAdsToday
+                val notifId = "NOTIF-AD-" + UUID.randomUUID().toString().take(8).uppercase()
+                val notif = NotificationDto(
+                    id = notifId,
+                    title = "🎬 Ad Reward Credited! (+₹$formattedEarned)",
+                    message = "₹$formattedEarned has been credited to your wallet deposit balance. (${claimResult.adsWatchedToday}/$totalAllowed ads watched today)",
+                    type = "WALLET",
+                    userId = userId,
+                    timestamp = System.currentTimeMillis()
+                )
+                db.collection("notifications").document(notifId).set(notif).await()
+            } catch (_: Exception) {}
+
+            Result.success(claimResult)
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.UPDATE, "users/$userId")
             Result.failure(e)
@@ -637,12 +752,15 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                 val userSnap = userDocRef.get().await()
                 if (userSnap.exists()) {
                     val curBal = userSnap.getLong("walletBalance")?.toInt() ?: 0
+                    val curWins = userSnap.getLong("totalWins")?.toInt() ?: 0
                     val curKills = userSnap.getLong("totalKills")?.toInt() ?: 0
                     val curWon = userSnap.getLong("totalWinnings")?.toInt() ?: 0
 
                     val curWinBal = userSnap.getLong("winningBalance")?.toInt() ?: curWon
 
+                    val isWin = item.placement == 1 || (item.placement == 0 && item.prizeWon > 0)
                     val newBal = curBal + item.prizeWon
+                    val newWins = if (isWin) curWins + 1 else curWins
                     val newKills = curKills + item.kills
                     val newWon = curWon + item.prizeWon
                     val newWinBal = curWinBal + item.prizeWon
@@ -650,6 +768,7 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                     userDocRef.update(
                         mapOf(
                             "walletBalance" to newBal,
+                            "totalWins" to newWins,
                             "totalKills" to newKills,
                             "totalWinnings" to newWon,
                             "winningBalance" to newWinBal
@@ -661,13 +780,13 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                         val txn = TransactionDto(
                             id = txnId,
                             userId = item.userId,
-                            amount = item.prizeWon,
+                            amount = item.prizeWon.toDouble(),
                             type = "PRIZE_WIN",
                             description = "Winnings: Rank #${item.placement} & ${item.kills} kills in $tourneyTitle",
                             referenceId = "SETTLE-$tournamentId",
                             status = "SUCCESS",
                             timestamp = System.currentTimeMillis(),
-                            balanceAfter = newBal
+                            balanceAfter = newBal.toDouble()
                         )
                         userDocRef.collection("transactions").document(txnId).set(txn).await()
 
@@ -722,13 +841,13 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                 val txn = TransactionDto(
                     id = txnId,
                     userId = userId,
-                    amount = delta,
+                    amount = delta.toDouble(),
                     type = if (delta >= 0) "DEPOSIT" else "ENTRY_FEE",
                     description = "Admin Adjustment: $reason",
                     referenceId = "ADMIN-ADJ",
                     status = "SUCCESS",
                     timestamp = System.currentTimeMillis(),
-                    balanceAfter = newBal
+                    balanceAfter = newBal.toDouble()
                 )
                 userDocRef.collection("transactions").document(txnId).set(txn).await()
 
@@ -882,13 +1001,13 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                 val txn = TransactionDto(
                     id = txnId,
                     userId = userId,
-                    amount = -amount,
+                    amount = -amount.toDouble(),
                     type = "WITHDRAWAL",
                     description = "UPI Withdrawal Request (Pending): $trimmedUpi",
                     referenceId = wdrId,
                     status = "PENDING",
                     timestamp = System.currentTimeMillis(),
-                    balanceAfter = newBal
+                    balanceAfter = newBal.toDouble()
                 )
                 transaction.set(txnDocRef, txn)
 
@@ -1039,13 +1158,13 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                     val refundTxn = TransactionDto(
                         id = refundTxnId,
                         userId = uid,
-                        amount = amt,
+                        amount = amt.toDouble(),
                         type = "WITHDRAWAL_REFUND",
                         description = "Withdrawal Refund: $trimmedReason",
                         referenceId = withdrawalId,
                         status = "SUCCESS",
                         timestamp = System.currentTimeMillis(),
-                        balanceAfter = newBal
+                        balanceAfter = newBal.toDouble()
                     )
                     transaction.set(userDocRef.collection("transactions").document(refundTxnId), refundTxn)
                 }
@@ -1310,14 +1429,14 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                     passwordHash = passwordHash,
                     ffUid = ffUid.trim(),
                     ffIgn = ffIgn.trim(),
-                    walletBalance = bonusAmount,
-                    winningBalance = 0,
-                    totalWithdrawn = 0,
+                    walletBalance = bonusAmount.toDouble(),
+                    winningBalance = 0.0,
+                    totalWithdrawn = 0.0,
                     isAdmin = isRealAdminEmail,
                     isSuspended = false,
                     matchesPlayed = 0,
                     totalKills = 0,
-                    totalWinnings = 0,
+                    totalWinnings = 0.0,
                     bonusClaimed = true,
                     signupTimestamp = nowTs
                 )
@@ -1336,8 +1455,8 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                             } else {
                                 "Welcome Sign-Up Bonus Credited 🎁"
                             },
-                            amount = bonusAmount,
-                            balanceAfter = bonusAmount,
+                            amount = bonusAmount.toDouble(),
+                            balanceAfter = bonusAmount.toDouble(),
                             referenceId = txnId,
                             timestamp = nowTs
                         )
@@ -1366,9 +1485,9 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                     email = email,
                     username = displayName.ifBlank { email.substringBefore("@").ifBlank { "Player" } },
                     isAdmin = isRealAdminEmail,
-                    walletBalance = 0,
-                    winningBalance = 0,
-                    totalWithdrawn = 0,
+                    walletBalance = 0.0,
+                    winningBalance = 0.0,
+                    totalWithdrawn = 0.0,
                     bonusClaimed = true,
                     signupTimestamp = nowTs
                 )
@@ -1863,13 +1982,25 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
                 )
                 settingsDocRef.set(settings).await()
             } else {
+                val updates = mutableMapOf<String, Any>()
                 val existingName = settingsDoc.getString("appName") ?: ""
                 if (existingName.isBlank() || existingName == "FF Tournaments") {
-                    val updates = mutableMapOf<String, Any>("appName" to "eSports Arena")
+                    updates["appName"] = "eSports Arena"
                     val existingAnnounce = settingsDoc.getString("announcementText") ?: ""
                     if (existingAnnounce.contains("FF Tournaments")) {
                         updates["announcementText"] = existingAnnounce.replace("FF Tournaments", "eSports Arena")
                     }
+                }
+                val existingGameId = settingsDoc.getString("unityGameId")?.trim().orEmpty()
+                val existingPlacementId = settingsDoc.getString("unityPlacementId")?.trim().orEmpty()
+                if (existingGameId.isBlank() || existingGameId == "5723485") {
+                    updates["unityGameId"] = "800408446"
+                    updates["unityTestMode"] = true
+                }
+                if (existingPlacementId.isBlank() || existingPlacementId == "Rewarded_Android") {
+                    updates["unityPlacementId"] = "esports"
+                }
+                if (updates.isNotEmpty()) {
                     settingsDocRef.update(updates).await()
                 }
             }
@@ -1879,5 +2010,186 @@ class FirestoreRepository(private val db: FirebaseFirestore) {
             }
         }
     }
+
+    // 7. Observe Staff Members & Permissions Registry in Real-Time
+    fun observeStaffMembers(): Flow<List<StaffMemberDto>> {
+        return db.collection("app_settings").document("staff_registry")
+            .snapshots()
+            .map { doc ->
+                doc.toSafeStaffList()
+            }
+            .catch { error ->
+                if (error is Exception && isSessionActive()) {
+                    handleFirestoreError(error, OperationType.GET, "app_settings/staff_registry")
+                }
+                emit(emptyList())
+            }
+    }
+
+    // Save or Update a Staff Member and optionally create/sync their login account
+    suspend fun saveOrUpdateStaffMember(
+        staff: StaffMemberDto,
+        plainPassword: String = ""
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val cleanUsername = staff.username.trim()
+            val cleanEmail = staff.email.trim().lowercase()
+            if (cleanUsername.isBlank() && cleanEmail.isBlank()) {
+                return@withContext Result.failure(Exception("Please provide a staff username or email."))
+            }
+
+            val usernameKey = com.example.auth.AuthManager.normalizeUsernameKey(
+                cleanUsername.ifBlank { cleanEmail.substringBefore("@") }
+            )
+            val resolvedUserId = staff.userId.ifBlank {
+                "user_$usernameKey"
+            }
+            val resolvedStaffId = staff.id.ifBlank {
+                "staff_$usernameKey"
+            }
+
+            val passwordHashToSave = if (plainPassword.isNotBlank()) {
+                com.example.auth.AuthManager.sha256(plainPassword.trim())
+            } else {
+                staff.passwordHash
+            }
+
+            val now = System.currentTimeMillis()
+            val normalizedStaff = staff.copy(
+                id = resolvedStaffId,
+                userId = resolvedUserId,
+                username = cleanUsername.ifBlank { cleanEmail.substringBefore("@") },
+                usernameLower = usernameKey,
+                email = cleanEmail,
+                passwordHash = passwordHashToSave,
+                updatedAt = now,
+                createdAt = if (staff.createdAt > 0L) staff.createdAt else now
+            )
+
+            // 1. Update /app_settings/staff_registry document (compliant with isValidAppSettings in firestore.rules)
+            val registryRef = db.collection("app_settings").document("staff_registry")
+            val snap = registryRef.get().await()
+            val currentList = snap.toSafeStaffList().toMutableList()
+            val existingIdx = currentList.indexOfFirst {
+                it.id == normalizedStaff.id ||
+                    (it.usernameLower.isNotBlank() && it.usernameLower == normalizedStaff.usernameLower) ||
+                    (it.email.isNotBlank() && normalizedStaff.email.isNotBlank() && it.email.equals(normalizedStaff.email, ignoreCase = true))
+            }
+
+            val finalStaff = if (existingIdx >= 0) {
+                val prev = currentList[existingIdx]
+                normalizedStaff.copy(
+                    id = prev.id,
+                    userId = prev.userId.ifBlank { normalizedStaff.userId },
+                    passwordHash = passwordHashToSave.ifBlank { prev.passwordHash },
+                    createdAt = prev.createdAt
+                ).also { currentList[existingIdx] = it }
+            } else {
+                currentList.add(0, normalizedStaff)
+                normalizedStaff
+            }
+
+            val registryData = mapOf(
+                "id" to "staff_registry",
+                "appName" to "eSports Arena",
+                "announcementText" to "Staff Registry",
+                "isMaintenance" to false,
+                "supportContact" to "Admin",
+                "minDeposit" to 20,
+                "platformFeePercent" to 10,
+                "rulesAndGuidelines" to "Role-based Staff Registry",
+                "signUpBonusEnabled" to true,
+                "signUpBonusMode" to "FIXED",
+                "staffList" to currentList.map { it.toMap() },
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            registryRef.set(registryData, SetOptions.merge()).await()
+
+            // 2. Also ensure the staff member's /users/{userId} account exists or is updated so they can log in with username/password
+            try {
+                val targetUserRef = db.collection("users").document(finalStaff.userId)
+                val userSnap = targetUserRef.get().await()
+                if (!userSnap.exists()) {
+                    val userPayload = mutableMapOf<String, Any>(
+                        "id" to finalStaff.userId,
+                        "userId" to finalStaff.userId,
+                        "username" to finalStaff.username,
+                        "usernameLower" to finalStaff.usernameLower,
+                        "email" to finalStaff.email.ifBlank { "${finalStaff.usernameLower}@staff.esportsarena.app" },
+                        "ffIgn" to finalStaff.username,
+                        "ffUid" to "STAFF",
+                        "walletBalance" to 0,
+                        "winningBalance" to 0,
+                        "totalWithdrawn" to 0,
+                        "matchesPlayed" to 0,
+                        "totalKills" to 0,
+                        "totalWinnings" to 0,
+                        "isSuspended" to false,
+                        "isAdmin" to finalStaff.isActive,
+                        "signupBonusCredited" to true,
+                        "signupTimestamp" to now,
+                        "createdAt" to FieldValue.serverTimestamp()
+                    )
+                    if (finalStaff.passwordHash.isNotBlank()) {
+                        userPayload["passwordHash"] = finalStaff.passwordHash
+                    }
+                    targetUserRef.set(userPayload, SetOptions.merge()).await()
+                } else {
+                    val updates = mutableMapOf<String, Any>(
+                        "isAdmin" to finalStaff.isActive
+                    )
+                    if (finalStaff.passwordHash.isNotBlank()) {
+                        updates["passwordHash"] = finalStaff.passwordHash
+                    }
+                    if (finalStaff.email.isNotBlank() && userSnap.getString("email").isNullOrBlank()) {
+                        updates["email"] = finalStaff.email
+                    }
+                    targetUserRef.set(updates, SetOptions.merge()).await()
+                }
+            } catch (_: Exception) {
+                // Non-fatal if user doc sync is skipped
+            }
+
+            Result.success("Staff member '${finalStaff.username}' saved with ${finalStaff.activePermissionLabels().size} active permissions!")
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, "app_settings/staff_registry")
+            Result.failure(e)
+        }
+    }
+
+    // Delete a Staff Member and revoke their admin flag
+    suspend fun deleteStaffMember(staffId: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val registryRef = db.collection("app_settings").document("staff_registry")
+            val snap = registryRef.get().await()
+            val currentList = snap.toSafeStaffList().toMutableList()
+            val removed = currentList.firstOrNull { it.id == staffId }
+            val updatedList = currentList.filterNot { it.id == staffId }
+
+            val registryData = mapOf(
+                "id" to "staff_registry",
+                "appName" to "eSports Arena",
+                "staffList" to updatedList.map { it.toMap() },
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            registryRef.set(registryData, SetOptions.merge()).await()
+
+            if (removed != null && removed.userId.isNotBlank() &&
+                !com.example.auth.AuthManager.isMasterAdminIdentity(removed.email, removed.username, removed.userId)
+            ) {
+                try {
+                    db.collection("users").document(removed.userId)
+                        .set(mapOf("isAdmin" to false), SetOptions.merge())
+                        .await()
+                } catch (_: Exception) {}
+            }
+
+            Result.success("Removed ${removed?.username ?: "staff member"} from Admin Staff.")
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, "app_settings/staff_registry")
+            Result.failure(e)
+        }
+    }
 }
+
 

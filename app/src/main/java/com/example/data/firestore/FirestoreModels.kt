@@ -55,44 +55,72 @@ data class UserDto(
     val passwordHash: String = "",
     val ffUid: String = "",
     val ffIgn: String = "",
-    val walletBalance: Int = 0,
-    val winningBalance: Int? = null, // Withdrawable balance from match prizes (null on legacy docs)
-    val totalWithdrawn: Int = 0,
+    val walletBalance: Double = 0.0,
+    val winningBalance: Double? = null, // Withdrawable balance from match prizes (null on legacy docs)
+    val totalWithdrawn: Double = 0.0,
     val isAdmin: Boolean = false,
     val isSuspended: Boolean = false,
     val matchesPlayed: Int = 0,
+    val totalWins: Int = 0,
     val totalKills: Int = 0,
-    val totalWinnings: Int = 0,
+    val totalWinnings: Double = 0.0,
     val bonusClaimed: Boolean = false,
     val savedUpiId: String = "",
+    val dailyAdsWatchedCount: Int = 0,
+    val dailyAdsWatchedDate: String = "",
     val signupTimestamp: Long = 0L,
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
+    val effectiveTournamentWins: Int
+        get() = when {
+            totalWins > 0 -> totalWins
+            totalWinnings > 0.0 -> 1
+            else -> 0
+        }
+
+    fun getTodayWatchedAds(todayDateStr: String): Int {
+        return if (dailyAdsWatchedDate == todayDateStr) dailyAdsWatchedCount else 0
+    }
+
+    fun getRemainingAdsToday(todayDateStr: String): Int {
+        return (5 - getTodayWatchedAds(todayDateStr)).coerceAtLeast(0)
+    }
+
     // Only winnings from matches can be withdrawn, constrained by current wallet balance
-    val effectiveWinningBalance: Int
+    val effectiveWinningBalance: Double
         get() {
-            val fromLifetime = (totalWinnings - totalWithdrawn).coerceAtLeast(0)
+            val fromLifetime = (totalWinnings - totalWithdrawn).coerceAtLeast(0.0)
             val availableWin = if (winningBalance != null) {
-                if (totalWithdrawn > 0) minOf(winningBalance, fromLifetime) else winningBalance
+                if (totalWithdrawn > 0.0) minOf(winningBalance, fromLifetime) else winningBalance
             } else {
                 fromLifetime
             }
-            return availableWin.coerceAtLeast(0).coerceAtMost(walletBalance.coerceAtLeast(0))
+            return availableWin.coerceAtLeast(0.0).coerceAtMost(walletBalance.coerceAtLeast(0.0))
         }
+}
+
+fun Number?.formatCurrency(): String {
+    if (this == null) return "0"
+    val d = this.toDouble()
+    return if (d % 1.0 == 0.0) {
+        d.toLong().toString()
+    } else {
+        String.format(java.util.Locale.US, "%.1f", d)
+    }
 }
 
 @IgnoreExtraProperties
 data class TransactionDto(
     val id: String = "",
     val userId: String = "",
-    val amount: Int = 0,
+    val amount: Double = 0.0,
     val type: String = "DEPOSIT", // DEPOSIT, ENTRY_FEE, PRIZE_WIN, ADMIN_ADJUST
     val description: String = "",
     val referenceId: String = "",
     val status: String = "SUCCESS",
     val timestamp: Long = System.currentTimeMillis(),
-    val balanceAfter: Int = 0
+    val balanceAfter: Double = 0.0
 )
 
 @IgnoreExtraProperties
@@ -128,6 +156,17 @@ data class AppSettingsDto(
     val signUpBonusMax: Int = 25,
     val latestAppVersion: String = "2.5.0",
     val updateReleaseNotes: String = "• Faster Free Fire Room ID & Password live sync\n• Instant UPI withdrawal status updates\n• Enhanced tournament lobby & UI performance",
+    val adsEnabled: Boolean = true,
+    val adsAccountName: String = "Unity Ads Android",
+    val adsAccountEmail: String = "udaynath381@gmail.com",
+    val adsOrganizationId: String = "",
+    val unityGameId: String = "800408446",
+    val unityPlacementId: String = "esports",
+    val unityInterstitialId: String = "",
+    val unityBannerId: String = "",
+    val unityTestMode: Boolean = true,
+    val dailyAdLimit: Int = 5,
+    val adRewardAmount: Double = 0.5,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )
 
@@ -186,10 +225,12 @@ fun DocumentSnapshot.toSafeUserDto(): UserDto? {
         val raw = data ?: return null
         fun str(key: String, fallback: String = ""): String =
             (raw[key] as? String)?.trim() ?: fallback
+        fun doubleVal(key: String, fallback: Double = 0.0): Double =
+            (raw[key] as? Number)?.toDouble() ?: (raw[key] as? String)?.toDoubleOrNull() ?: fallback
+        fun doubleOrNull(key: String): Double? =
+            (raw[key] as? Number)?.toDouble() ?: (raw[key] as? String)?.toDoubleOrNull()
         fun intVal(key: String, fallback: Int = 0): Int =
             (raw[key] as? Number)?.toInt() ?: (raw[key] as? String)?.toIntOrNull() ?: fallback
-        fun intOrNull(key: String): Int? =
-            (raw[key] as? Number)?.toInt() ?: (raw[key] as? String)?.toIntOrNull()
         fun longVal(key: String, fallback: Long = 0L): Long =
             (raw[key] as? Number)?.toLong()
                 ?: (raw[key] as? Timestamp)?.toDate()?.time
@@ -207,7 +248,7 @@ fun DocumentSnapshot.toSafeUserDto(): UserDto? {
         }
         val resolvedIgn = str("ffIgn").ifBlank { str("inGameName") }
         val resolvedUid = str("ffUid").ifBlank { str("inGameId") }
-        val resolvedWallet = if (raw.containsKey("walletBalance")) intVal("walletBalance", 0) else intVal("balance", 0)
+        val resolvedWallet = if (raw.containsKey("walletBalance")) doubleVal("walletBalance", 0.0) else doubleVal("balance", 0.0)
 
         UserDto(
             id = id,
@@ -220,15 +261,18 @@ fun DocumentSnapshot.toSafeUserDto(): UserDto? {
             ffUid = resolvedUid,
             ffIgn = resolvedIgn,
             walletBalance = resolvedWallet,
-            winningBalance = intOrNull("winningBalance"),
-            totalWithdrawn = intVal("totalWithdrawn", 0),
+            winningBalance = doubleOrNull("winningBalance"),
+            totalWithdrawn = doubleVal("totalWithdrawn", 0.0),
             isAdmin = boolVal("isAdmin", false),
             isSuspended = boolVal("isSuspended", false),
             matchesPlayed = intVal("matchesPlayed", 0),
+            totalWins = intVal("totalWins", intVal("wins", intVal("tournamentWins", 0))),
             totalKills = intVal("totalKills", 0),
-            totalWinnings = intVal("totalWinnings", 0),
+            totalWinnings = doubleVal("totalWinnings", 0.0),
             bonusClaimed = boolVal("bonusClaimed", false),
             savedUpiId = str("savedUpiId"),
+            dailyAdsWatchedCount = intVal("dailyAdsWatchedCount", 0),
+            dailyAdsWatchedDate = str("dailyAdsWatchedDate"),
             signupTimestamp = longVal("signupTimestamp", 0L),
             createdAt = raw["createdAt"] as? Timestamp,
             updatedAt = raw["updatedAt"] as? Timestamp
@@ -322,19 +366,19 @@ fun DocumentSnapshot.toSafeTransactionDto(): TransactionDto? {
         try {
             val raw = data ?: return null
             fun str(key: String, fallback: String = ""): String = (raw[key] as? String) ?: fallback
-            fun intVal(key: String, fallback: Int = 0): Int = (raw[key] as? Number)?.toInt() ?: fallback
+            fun doubleVal(key: String, fallback: Double = 0.0): Double = (raw[key] as? Number)?.toDouble() ?: fallback
             fun longVal(key: String, fallback: Long = 0L): Long =
                 (raw[key] as? Number)?.toLong() ?: (raw[key] as? Timestamp)?.toDate()?.time ?: fallback
             TransactionDto(
                 id = id,
                 userId = str("userId"),
-                amount = intVal("amount", 0),
+                amount = doubleVal("amount", 0.0),
                 type = str("type", "DEPOSIT"),
                 description = str("description"),
                 referenceId = str("referenceId"),
                 status = str("status", "SUCCESS"),
                 timestamp = longVal("timestamp", System.currentTimeMillis()),
-                balanceAfter = intVal("balanceAfter", 0)
+                balanceAfter = doubleVal("balanceAfter", 0.0)
             )
         } catch (_: Exception) {
             null
@@ -378,9 +422,61 @@ fun DocumentSnapshot.toSafeNotificationDto(): NotificationDto? {
 fun DocumentSnapshot.toSafeAppSettingsDto(): AppSettingsDto? {
     if (!exists()) return null
     return try {
-        toObject(AppSettingsDto::class.java)?.copy(id = id)
+        val raw = data ?: return toObject(AppSettingsDto::class.java)?.copy(id = id)
+        fun str(key: String, fallback: String): String =
+            (raw[key] as? String)?.trim()?.takeIf { it.isNotEmpty() } ?: fallback
+        fun intVal(key: String, fallback: Int): Int =
+            (raw[key] as? Number)?.toInt() ?: (raw[key] as? String)?.toIntOrNull() ?: fallback
+        fun doubleVal(key: String, fallback: Double): Double =
+            (raw[key] as? Number)?.toDouble() ?: (raw[key] as? String)?.toDoubleOrNull() ?: fallback
+        fun boolVal(key: String, fallback: Boolean): Boolean =
+            (raw[key] as? Boolean) ?: fallback
+
+        AppSettingsDto(
+            id = id.ifBlank { "main" },
+            appName = str("appName", "eSports Arena"),
+            announcementText = (raw["announcementText"] as? String)
+                ?: "🔥 Grand Championship Live! Join Bermuda and Purgatory custom matches.",
+            isMaintenance = boolVal("isMaintenance", false),
+            supportContact = (raw["supportContact"] as? String)
+                ?: "WhatsApp: +91 98765 43210 / Discord: @fftourneys",
+            minDeposit = intVal("minDeposit", 20),
+            platformFeePercent = intVal("platformFeePercent", 10),
+            rulesAndGuidelines = (raw["rulesAndGuidelines"] as? String)
+                ?: "1. Mobile devices only.\n2. Teaming up in Solo matches is banned.\n3. Room ID & Password released 15m prior to start.",
+            signUpBonusEnabled = boolVal("signUpBonusEnabled", true),
+            signUpBonusMode = str("signUpBonusMode", "FIXED"),
+            signUpBonusFixed = intVal("signUpBonusFixed", 10),
+            signUpBonusMin = intVal("signUpBonusMin", 5),
+            signUpBonusMax = intVal("signUpBonusMax", 25),
+            latestAppVersion = str("latestAppVersion", "2.5.0"),
+            updateReleaseNotes = str(
+                "updateReleaseNotes",
+                "• Faster Free Fire Room ID & Password live sync\n• Instant UPI withdrawal status updates\n• Enhanced tournament lobby & UI performance"
+            ),
+            adsEnabled = boolVal("adsEnabled", true),
+            adsAccountName = str("adsAccountName", "Unity Ads Android"),
+            adsAccountEmail = str("adsAccountEmail", "udaynath381@gmail.com"),
+            adsOrganizationId = (raw["adsOrganizationId"] as? String)?.trim().orEmpty(),
+            unityGameId = com.example.data.ads.UnityAdsManager.normalizeGameId(raw["unityGameId"] as? String),
+            unityPlacementId = com.example.data.ads.UnityAdsManager.normalizePlacementId(raw["unityPlacementId"] as? String),
+            unityInterstitialId = (raw["unityInterstitialId"] as? String)?.trim().orEmpty(),
+            unityBannerId = (raw["unityBannerId"] as? String)?.trim().orEmpty(),
+            unityTestMode = if ((raw["unityGameId"] as? String)?.trim() == "5723485") {
+                true
+            } else {
+                boolVal("unityTestMode", true)
+            },
+            dailyAdLimit = intVal("dailyAdLimit", 5).coerceIn(1, 50),
+            adRewardAmount = doubleVal("adRewardAmount", 0.5).takeIf { it > 0.0 } ?: 0.5,
+            updatedAt = raw["updatedAt"] as? Timestamp
+        )
     } catch (_: Exception) {
-        null
+        try {
+            toObject(AppSettingsDto::class.java)?.copy(id = id)
+        } catch (_: Exception) {
+            null
+        }
     }
 }
 
@@ -451,3 +547,105 @@ fun DocumentSnapshot.toSupportMessageDto(): SupportMessageDto? {
         createdAt = getTimestamp("createdAt")
     )
 }
+
+@IgnoreExtraProperties
+data class StaffMemberDto(
+    val id: String = "",
+    val userId: String = "",
+    val username: String = "",
+    val usernameLower: String = "",
+    val email: String = "",
+    val roleTitle: String = "Moderator",
+    val passwordHash: String = "",
+    val isActive: Boolean = true,
+    val canCreateMatch: Boolean = true,
+    val canManageBalance: Boolean = false,
+    val canManageSupport: Boolean = true,
+    val canBroadcast: Boolean = false,
+    val canManageWithdrawals: Boolean = false,
+    val canManageSettings: Boolean = false,
+    val addedBy: String = "Uday",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+) {
+    fun activePermissionLabels(): List<String> = buildList {
+        if (canCreateMatch) add("Create & Manage Match")
+        if (canManageBalance) add("Manage Balance & Users")
+        if (canManageSupport) add("Manage Support")
+        if (canBroadcast) add("Broadcast Alerts")
+        if (canManageWithdrawals) add("Withdrawal Management")
+        if (canManageSettings) add("App & Ads Settings")
+    }
+
+    fun toMap(): Map<String, Any> = mapOf(
+        "id" to id,
+        "userId" to userId,
+        "username" to username,
+        "usernameLower" to usernameLower.ifBlank { username.trim().lowercase() },
+        "email" to email.trim().lowercase(),
+        "roleTitle" to roleTitle,
+        "passwordHash" to passwordHash,
+        "isActive" to isActive,
+        "canCreateMatch" to canCreateMatch,
+        "canManageBalance" to canManageBalance,
+        "canManageSupport" to canManageSupport,
+        "canBroadcast" to canBroadcast,
+        "canManageWithdrawals" to canManageWithdrawals,
+        "canManageSettings" to canManageSettings,
+        "addedBy" to addedBy,
+        "createdAt" to createdAt,
+        "updatedAt" to updatedAt
+    )
+
+    companion object {
+        fun fromMap(raw: Map<*, *>): StaffMemberDto? {
+            fun str(key: String, fallback: String = ""): String = (raw[key] as? String)?.trim() ?: fallback
+            fun boolVal(key: String, fallback: Boolean = false): Boolean = (raw[key] as? Boolean) ?: fallback
+            fun longVal(key: String, fallback: Long = System.currentTimeMillis()): Long =
+                (raw[key] as? Number)?.toLong() ?: fallback
+
+            val idVal = str("id")
+            val usernameVal = str("username")
+            val emailVal = str("email").lowercase()
+            if (idVal.isBlank() && usernameVal.isBlank() && emailVal.isBlank()) return null
+
+            val resolvedId = idVal.ifBlank {
+                "staff_${usernameVal.lowercase().replace(Regex("[^a-z0-9]"), "_").ifBlank { emailVal.substringBefore("@") }}"
+            }
+
+            return StaffMemberDto(
+                id = resolvedId,
+                userId = str("userId", resolvedId),
+                username = usernameVal.ifBlank { emailVal.substringBefore("@").ifBlank { "Staff" } },
+                usernameLower = str("usernameLower", usernameVal.lowercase()),
+                email = emailVal,
+                roleTitle = str("roleTitle", "Staff Moderator"),
+                passwordHash = str("passwordHash"),
+                isActive = boolVal("isActive", true),
+                canCreateMatch = boolVal("canCreateMatch", false),
+                canManageBalance = boolVal("canManageBalance", false),
+                canManageSupport = boolVal("canManageSupport", false),
+                canBroadcast = boolVal("canBroadcast", false),
+                canManageWithdrawals = boolVal("canManageWithdrawals", false),
+                canManageSettings = boolVal("canManageSettings", false),
+                addedBy = str("addedBy", "Main Admin"),
+                createdAt = longVal("createdAt"),
+                updatedAt = longVal("updatedAt")
+            )
+        }
+    }
+}
+
+fun DocumentSnapshot.toSafeStaffList(): List<StaffMemberDto> {
+    if (!exists()) return emptyList()
+    return try {
+        val raw = data ?: return emptyList()
+        val listRaw = raw["staffList"] as? List<*> ?: return emptyList()
+        listRaw.mapNotNull { item ->
+            (item as? Map<*, *>)?.let { StaffMemberDto.fromMap(it) }
+        }.sortedByDescending { it.createdAt }
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+

@@ -108,6 +108,7 @@ dependencies {
   // implementation(libs.androidx.room.runtime)
   implementation(libs.coil.compose)
   implementation(libs.lottie.compose)
+  implementation("com.unity3d.ads:unity-ads:4.21.0")
   // implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)
   implementation(libs.firebase.firestore)

@@ -60,6 +60,9 @@ import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.example.R
+import android.app.Activity
+import androidx.compose.material.icons.filled.PlayCircle
+import com.example.data.ads.UnityAdsManager
 import com.example.data.payment.DepositReceiptData
 import com.example.data.payment.DepositReceiptManager
 import androidx.compose.material3.Button
@@ -89,6 +92,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -116,6 +120,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.data.firestore.TransactionDto
 import com.example.data.firestore.WithdrawalRequestDto
+import com.example.data.firestore.formatCurrency
 import com.example.data.payment.PaytmPaymentService
 import com.example.data.payment.PaytmTxnStatus
 import com.example.ui.components.HighContrastCard
@@ -144,6 +149,7 @@ fun WalletScreen(viewModel: AppViewModel) {
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val transactions by viewModel.userTransactions.collectAsStateWithLifecycle()
     val userWithdrawals by viewModel.userWithdrawals.collectAsStateWithLifecycle()
+    val appSettings by viewModel.appSettings.collectAsStateWithLifecycle()
 
     var showDepositDialog by remember { mutableStateOf(false) }
     var showWithdrawDialog by remember { mutableStateOf(false) }
@@ -169,12 +175,12 @@ fun WalletScreen(viewModel: AppViewModel) {
 
     val activeWithdrawnSum = userWithdrawals
         .filter { it.status.equals("PENDING", ignoreCase = true) || it.status.equals("APPROVED", ignoreCase = true) }
-        .sumOf { it.amount }
-    val maxFromLifetimeWinnings = ((currentUser?.totalWinnings ?: 0) - activeWithdrawnSum).coerceAtLeast(0)
+        .sumOf { it.amount.toDouble() }
+    val maxFromLifetimeWinnings = ((currentUser?.totalWinnings ?: 0.0) - activeWithdrawnSum).coerceAtLeast(0.0)
     val withdrawableWinnings = minOf(
-        currentUser?.effectiveWinningBalance ?: 0,
+        currentUser?.effectiveWinningBalance ?: 0.0,
         maxFromLifetimeWinnings
-    ).coerceAtLeast(0)
+    ).coerceAtLeast(0.0)
     val pendingWithdrawalCount = userWithdrawals.count { it.status == "PENDING" }
 
     Scaffold(
@@ -267,7 +273,7 @@ fun WalletScreen(viewModel: AppViewModel) {
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Text(
-                                text = "₹${currentUser?.walletBalance ?: 0}",
+                                text = "₹${currentUser?.walletBalance.formatCurrency()}",
                                 fontSize = if (isCompactScreen) 30.sp else 36.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Color.White,
@@ -299,7 +305,7 @@ fun WalletScreen(viewModel: AppViewModel) {
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "₹$totalDeposited",
+                                        text = "₹${totalDeposited.formatCurrency()}",
                                         fontSize = if (isCompactScreen) 14.sp else 16.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = SuccessGreen,
@@ -320,7 +326,7 @@ fun WalletScreen(viewModel: AppViewModel) {
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "₹$totalWon",
+                                        text = "₹${totalWon.formatCurrency()}",
                                         fontSize = if (isCompactScreen) 14.sp else 16.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = TrophyGold,
@@ -390,7 +396,7 @@ fun WalletScreen(viewModel: AppViewModel) {
                                         }
                                     }
                                     Text(
-                                        text = "₹$withdrawableWinnings",
+                                        text = "₹${withdrawableWinnings.formatCurrency()}",
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Black,
                                         color = TrophyGold
@@ -460,6 +466,309 @@ fun WalletScreen(viewModel: AppViewModel) {
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Watch Ads & Earn Balance Card (Unity Rewarded Ads - Real Ads Mode)
+                if (appSettings?.adsEnabled != false) {
+                    item {
+                        val activity = LocalContext.current as? Activity
+                        val todayDateStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
+                        val maxDailyAds = (appSettings?.dailyAdLimit ?: UnityAdsManager.DEFAULT_DAILY_LIMIT).coerceIn(1, 20)
+                        val todayWatchedCount = currentUser?.getTodayWatchedAds(todayDateStr) ?: 0
+                        val remainingAds = (maxDailyAds - todayWatchedCount).coerceAtLeast(0)
+                        var isAdShowing by remember { mutableStateOf(false) }
+                        var rewardEarnedModalAmount by remember { mutableStateOf<Double?>(null) }
+                        var adErrorMsg by remember { mutableStateOf<String?>(null) }
+
+                        LaunchedEffect(
+                            activity,
+                            appSettings?.adsEnabled,
+                            appSettings?.adsAccountName,
+                            appSettings?.adsAccountEmail,
+                            appSettings?.adsOrganizationId,
+                            appSettings?.unityGameId,
+                            appSettings?.unityPlacementId,
+                            appSettings?.unityInterstitialId,
+                            appSettings?.unityBannerId,
+                            appSettings?.unityTestMode,
+                            appSettings?.dailyAdLimit,
+                            appSettings?.adRewardAmount
+                        ) {
+                            if (activity != null) {
+                                UnityAdsManager.configure(
+                                    context = activity,
+                                    gameId = appSettings?.unityGameId ?: UnityAdsManager.DEFAULT_GAME_ID,
+                                    placementId = appSettings?.unityPlacementId ?: UnityAdsManager.DEFAULT_PLACEMENT_ID,
+                                    interstitialPlacementId = appSettings?.unityInterstitialId ?: UnityAdsManager.DEFAULT_INTERSTITIAL_ID,
+                                    bannerPlacementId = appSettings?.unityBannerId ?: UnityAdsManager.DEFAULT_BANNER_ID,
+                                    accountName = appSettings?.adsAccountName ?: UnityAdsManager.DEFAULT_ACCOUNT_NAME,
+                                    accountEmail = appSettings?.adsAccountEmail ?: UnityAdsManager.DEFAULT_ACCOUNT_EMAIL,
+                                    organizationId = appSettings?.adsOrganizationId ?: UnityAdsManager.DEFAULT_ORGANIZATION_ID,
+                                    adsEnabled = appSettings?.adsEnabled ?: true,
+                                    testMode = appSettings?.unityTestMode ?: UnityAdsManager.DEFAULT_TEST_MODE,
+                                    dailyAdLimit = maxDailyAds,
+                                    rewardPerAd = appSettings?.adRewardAmount ?: UnityAdsManager.DEFAULT_REWARD_PER_AD
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = SlateCardBg,
+                            border = BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.45f)),
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("watch_ads_reward_card")
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color(0xFF2E1065).copy(alpha = 0.5f),
+                                                SlateCardBg
+                                            )
+                                        )
+                                    )
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .background(
+                                                    Brush.linearGradient(
+                                                        listOf(Color(0xFF8B5CF6), Color(0xFFD946EF))
+                                                    ),
+                                                    CircleShape
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayCircle,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = "WATCH ADS & EARN",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White,
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Surface(
+                                                    color = Color(0xFFD946EF).copy(alpha = 0.2f),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "FREE CASH 🎁",
+                                                        color = Color(0xFFF472B6),
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = "Earn ₹1 – ₹5 random deposit balance per video",
+                                                fontSize = 11.sp,
+                                                color = TextSecondaryMuted
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Progress Dots & Count
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF0F172A), RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "DAILY ALLOWANCE",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                        Text(
+                                            text = "$todayWatchedCount / $maxDailyAds Completed Today",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (todayWatchedCount >= maxDailyAds) TrophyGold else Color.White
+                                        )
+                                    }
+
+                                    // Segment Indicators (up to 7 dots for clean layout)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        val dotsToShow = maxDailyAds.coerceIn(1, 7)
+                                        for (i in 1..dotsToShow) {
+                                            val isDone = i <= todayWatchedCount
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(width = 22.dp, height = 10.dp)
+                                                    .background(
+                                                        color = if (isDone) SuccessGreen else Color(0xFF334155),
+                                                        shape = RoundedCornerShape(3.dp)
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (isDone) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(8.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (adErrorMsg != null) {
+                                    Text(
+                                        text = adErrorMsg!!,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFFEF4444),
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                // Action Button or Limit Reached Notice
+                                if (todayWatchedCount >= maxDailyAds) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = Color(0xFF0F172A),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, Color(0xFF334155))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.HourglassEmpty,
+                                                contentDescription = null,
+                                                tint = TrophyGold,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "Daily Limit Reached ($todayWatchedCount/$maxDailyAds Watched)",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TrophyGold
+                                                )
+                                                Text(
+                                                    text = "Come back tomorrow after 12:00 AM midnight for $maxDailyAds more rewarded video ads!",
+                                                    fontSize = 10.sp,
+                                                    color = TextSecondaryMuted
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            if (isAdShowing || activity == null) return@Button
+                                            isAdShowing = true
+                                            adErrorMsg = null
+
+                                            UnityAdsManager.showRewardedAd(
+                                                activity = activity,
+                                                placementId = appSettings?.unityPlacementId ?: UnityAdsManager.DEFAULT_PLACEMENT_ID,
+                                                onRewardEarned = { randomReward ->
+                                                    isAdShowing = false
+                                                    viewModel.claimAdReward(randomReward) { success, msg, claimedAmt ->
+                                                        if (success) {
+                                                            rewardEarnedModalAmount = claimedAmt
+                                                        } else {
+                                                            adErrorMsg = msg
+                                                        }
+                                                    }
+                                                },
+                                                onAdDismissed = {
+                                                    isAdShowing = false
+                                                },
+                                                onError = { err ->
+                                                    isAdShowing = false
+                                                    adErrorMsg = err
+                                                }
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF8B5CF6)
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        enabled = !isAdShowing,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 48.dp)
+                                            .testTag("watch_reward_ad_button")
+                                    ) {
+                                        if (isAdShowing) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp,
+                                                color = Color.White
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Loading Video Ad...",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayCircle,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Watch Ad • Win ₹1 - ₹5 ($remainingAds Left Today)",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Celebration Modal for Ad Reward
+                        if (rewardEarnedModalAmount != null) {
+                            AdRewardCelebrationDialog(
+                                rewardAmount = rewardEarnedModalAmount!!,
+                                remainingAdsToday = remainingAds,
+                                onDismiss = { rewardEarnedModalAmount = null }
+                            )
                         }
                     }
                 }
@@ -815,6 +1124,7 @@ fun TransactionItemCard(
         "WITHDRAWAL" -> Triple(FireOrange.copy(alpha = 0.15f), FireOrangeDark, "UPI WITHDRAWAL")
         "WITHDRAWAL_REFUND" -> Triple(SuccessGreen.copy(alpha = 0.15f), SuccessGreen, "WDR REFUND")
         "SIGNUP_BONUS" -> Triple(TrophyGold.copy(alpha = 0.18f), FireOrangeDark, "SIGN-UP BONUS")
+        "REWARD_AD" -> Triple(Color(0xFF8B5CF6).copy(alpha = 0.2f), Color(0xFFA855F7), "AD REWARD 🎬")
         else -> Triple(Color(0xFF64748B).copy(alpha = 0.15f), Color(0xFF64748B), txn.type)
     }
 
@@ -889,7 +1199,7 @@ fun TransactionItemCard(
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "${if (isPositive) "+" else ""}₹${txn.amount}",
+                        text = "${if (isPositive) "+" else ""}₹${txn.amount.formatCurrency()}",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Black,
                         color = if (isPositive) SuccessGreen else Color(0xFFEF4444),
@@ -897,7 +1207,7 @@ fun TransactionItemCard(
                         softWrap = false
                     )
                     Text(
-                        text = "Bal: ₹${txn.balanceAfter}",
+                        text = "Bal: ₹${txn.balanceAfter.formatCurrency()}",
                         fontSize = 11.sp,
                         color = TextSecondaryMuted,
                         maxLines = 1,
@@ -1036,7 +1346,7 @@ enum class DepositFlowStep {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DepositModalDialog(
-    currentBalance: Int = 0,
+    currentBalance: Number = 0,
     initialAmount: Int = 100,
     userName: String = "Player",
     userEmail: String = "",
@@ -1077,7 +1387,7 @@ fun DepositModalDialog(
     val quickAmounts = listOf(50, 100, 200, 500, 1000)
 
     val parsedAmount = amountInput.toIntOrNull() ?: 0
-    val projectedBalance = currentBalance + parsedAmount
+    val projectedBalance = currentBalance.toDouble() + parsedAmount
 
     fun verifyStatus(silent: Boolean = false) {
         if (currentOrderId.isBlank() || isVerifying) return
@@ -2094,7 +2404,7 @@ fun DepositModalDialog(
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "Updated Balance: ₹${currentBalance + confirmedAmount}",
+                                            text = "Updated Balance: ₹${(currentBalance.toDouble() + confirmedAmount).formatCurrency()}",
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = TextPrimaryDark,
@@ -2256,7 +2566,7 @@ fun DepositModalDialog(
                                                             txnId = confirmedTxnId,
                                                             bankTxnId = confirmedBankTxnId,
                                                             amount = confirmedAmount,
-                                                            updatedBalance = currentBalance + confirmedAmount,
+                                                            updatedBalance = currentBalance.toDouble() + confirmedAmount,
                                                             paymentMethod = "Paytm QR & UPI Gateway",
                                                             userName = userName,
                                                             userEmail = userEmail
@@ -2315,7 +2625,7 @@ fun DepositModalDialog(
                                                             txnId = confirmedTxnId,
                                                             bankTxnId = confirmedBankTxnId,
                                                             amount = confirmedAmount,
-                                                            updatedBalance = currentBalance + confirmedAmount,
+                                                            updatedBalance = currentBalance.toDouble() + confirmedAmount,
                                                             paymentMethod = "Paytm QR & UPI Gateway",
                                                             userName = userName,
                                                             userEmail = userEmail
@@ -2510,14 +2820,14 @@ fun UserWithdrawalTrackingCard(request: WithdrawalRequestDto) {
 
 @Composable
 fun UpiWithdrawalModalDialog(
-    withdrawableWinnings: Int,
-    totalBalance: Int,
+    withdrawableWinnings: Number,
+    totalBalance: Number,
     defaultName: String,
     savedUpiId: String = "",
     onDismiss: () -> Unit,
     onSubmitWithdrawal: (amount: Int, upiId: String, holderName: String, saveUpi: Boolean, onResult: (Boolean, String) -> Unit) -> Unit
 ) {
-    var amountInput by remember { mutableStateOf(if (withdrawableWinnings >= 50) "50" else if (withdrawableWinnings >= 20) "$withdrawableWinnings" else "") }
+    var amountInput by remember { mutableStateOf(if (withdrawableWinnings.toDouble() >= 50) "50" else if (withdrawableWinnings.toDouble() >= 20) "${withdrawableWinnings.formatCurrency()}" else "") }
     var upiIdInput by remember { mutableStateOf(savedUpiId.ifBlank { "" }) }
     var saveUpiForFuture by remember { mutableStateOf(true) }
     var holderNameInput by remember { mutableStateOf(defaultName) }
@@ -2710,12 +3020,12 @@ fun UpiWithdrawalModalDialog(
                         )
 
                         // Quick Amount Chips
-                        if (withdrawableWinnings >= 20) {
+                        if (withdrawableWinnings.toDouble() >= 20) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                listOf(20, 50, 100).filter { it <= withdrawableWinnings }.forEach { preset ->
+                                listOf(20, 50, 100).filter { it.toDouble() <= withdrawableWinnings.toDouble() }.forEach { preset ->
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
                                         color = SlateSubtle,
@@ -2987,14 +3297,14 @@ fun UpiWithdrawalModalDialog(
                             Button(
                                 onClick = {
                                     when {
-                                        withdrawableWinnings < 20 -> {
+                                        withdrawableWinnings.toDouble() < 20 -> {
                                             errorMessage = "You need at least ₹20 in withdrawable tournament winnings to request a payout."
                                         }
                                         parsedAmount < 20 -> {
                                             errorMessage = "Minimum withdrawal amount is ₹20."
                                         }
-                                        parsedAmount > withdrawableWinnings -> {
-                                            errorMessage = "You can only withdraw from your winning balance (Max: ₹$withdrawableWinnings)."
+                                        parsedAmount.toDouble() > withdrawableWinnings.toDouble() -> {
+                                            errorMessage = "You can only withdraw from your winning balance (Max: ₹${withdrawableWinnings.formatCurrency()})."
                                         }
                                         !upiIdInput.trim().contains("@") || upiIdInput.trim().length < 5 -> {
                                             errorMessage = "Please enter a valid UPI ID (e.g., player@upi)."
@@ -3060,6 +3370,122 @@ fun UpiWithdrawalModalDialog(
                     }
                 }
             }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdRewardCelebrationDialog(
+    rewardAmount: Double,
+    remainingAdsToday: Int,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .padding(16.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = SlateCardBg),
+            border = BorderStroke(1.5.dp, Color(0xFF8B5CF6))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(70.dp)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(Color(0xFF8B5CF6), Color(0xFF6366F1).copy(alpha = 0.2f))
+                            ),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = "Reward",
+                        tint = TrophyGold,
+                        modifier = Modifier.size(42.dp)
+                    )
+                }
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "REWARD CREDITED! 🎉",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = TextPrimaryDark,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "Thanks for watching! Deposit balance updated.",
+                        fontSize = 12.sp,
+                        color = TextSecondaryMuted,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF2E1065).copy(alpha = 0.6f),
+                    border = BorderStroke(1.dp, Color(0xFF8B5CF6)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "RANDOM REWARD EARNED",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFC084FC)
+                        )
+                        Text(
+                            text = "+₹${rewardAmount.formatCurrency()}",
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Black,
+                            color = TrophyGold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (remainingAdsToday > 0)
+                                "You can watch $remainingAdsToday more ad${if (remainingAdsToday > 1) "s" else ""} today!"
+                            else
+                                "You completed all 5 ads for today! Resets at midnight.",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimaryDark,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = FireOrange),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("claim_ad_reward_dismiss_button")
+                ) {
+                    Text(
+                        text = "Claim & Continue",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
             }
         }
     }

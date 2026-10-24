@@ -58,6 +58,7 @@ import com.example.data.firestore.TournamentDto
 import com.example.ui.components.HighContrastCard
 import com.example.ui.components.MatchTypeBadge
 import com.example.ui.components.StatusBadge
+import com.example.ui.components.TopPlayersLeaderboardCard
 import com.example.ui.theme.FireOrange
 import com.example.ui.theme.FireOrangeDark
 import com.example.ui.theme.HighContrastDark
@@ -80,6 +81,8 @@ fun HistoryScreen(viewModel: AppViewModel) {
     val userParticipations by viewModel.userParticipations.collectAsStateWithLifecycle()
     val allTournaments by viewModel.allTournaments.collectAsStateWithLifecycle()
     val userTransactions by viewModel.userTransactions.collectAsStateWithLifecycle()
+    val topPlayers by viewModel.topPlayers.collectAsStateWithLifecycle()
+    val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
 
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("My Matches", "All Match Results", "Balance Log")
